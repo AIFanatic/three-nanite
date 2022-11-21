@@ -131,19 +131,19 @@ async function load() {
     // // throw Error("ewfwe")
 
 
-    // function ShowMeshletMeshForLOD(meshlets: MeshletMesh[], lod: number) {
-    //     const meshlet = meshlets[lod];
-    //     scene.add(meshlet);
+    function ShowMeshletMeshForLOD(meshlets: MeshletMesh[], lod: number) {
+        const meshlet = meshlets[lod];
+        scene.add(meshlet);
 
-    //     // for (let i = 0; i < meshlet.meshlets.length; i++) {
-    //     //     const meshletGroup = meshlet.GetMeshlet(i);
-    //     //     scene.add(meshletGroup);
+        // for (let i = 0; i < meshlet.meshlets.length; i++) {
+        //     const meshletGroup = meshlet.GetMeshlet(i);
+        //     scene.add(meshletGroup);
 
-    //     //     const material = new MeshBasicMaterial({color: 0xffff00, wireframe: true});
-    //     //     const mesh = new Mesh(meshlet.meshletsGeometrySimplified, material);
-    //     //     scene.add(mesh);
-    //     // }
-    // }
+        //     const material = new MeshBasicMaterial({color: 0xffff00, wireframe: true});
+        //     const mesh = new Mesh(meshlet.meshletsGeometrySimplified, material);
+        //     scene.add(mesh);
+        // }
+    }
 
     function benchmark(meshes: MeshletMesh[], num: number) {
         let offset = ( num - 1 ) / 2;
@@ -163,7 +163,7 @@ async function load() {
         }
     }
 
-    benchmark(meshes, 1);
+    benchmark(meshes, 10);
 
     console.log(scene)
 
@@ -212,27 +212,27 @@ async function load() {
 
 
 
-    // // GUI
-    // const guiParams = {
-    //     lod: 0
-    // }
+    // GUI
+    const guiParams = {
+        lod: 0
+    }
 
-    // let prevLOD = guiParams.lod;
-    // function onLODChanged() {
-    //     if (guiParams.lod != prevLOD) {
-    //         scene.clear();
-    //         ShowMeshletMeshForLOD(meshes, guiParams.lod);
+    let prevLOD = guiParams.lod;
+    function onLODChanged() {
+        if (guiParams.lod != prevLOD) {
+            scene.clear();
+            ShowMeshletMeshForLOD(meshes, guiParams.lod);
 
-    //         prevLOD = guiParams.lod;
-    //     }
-    // }
-    // const gui = new GUI();
-    // gui.close();
+            prevLOD = guiParams.lod;
+        }
+    }
+    const gui = new GUI();
+    gui.close();
 
-    // gui.add(guiParams, 'lod', 0, meshes.length - 1, 1).onChange(onLODChanged);
-    // gui.open();
+    gui.add(guiParams, 'lod', 0, meshes.length - 1, 1).onChange(onLODChanged);
+    gui.open();
 
-    // onLODChanged();
+    onLODChanged();
 }
 
 load();
