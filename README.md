@@ -14,3 +14,12 @@ For now it clusters triangles into a "Cluster hierarchy" and performs merge and 
 
 ## References
 [Nanite - A Deep Dive](https://advances.realtimerendering.com/s2021/Karis_Nanite_SIGGRAPH_Advances_2021_final.pdf)
+
+
+## TODO:
+- Make last step (Split simplified triangle list into clusters (128 tris))
+(page 52 - nanite).
+- Port everything into separate methods, so it can be called cleanly.
+- Get rid of threejs in mergeBufferGeometries.
+- Add Metis to perform grouping (uses MeshletEdgeFinder.getBoundary, needs metis port).
+- SimplifyModifierV4 pass vertices and indices directly so it doesn't rely on threejs OBJExported and OBJLoader.

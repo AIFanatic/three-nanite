@@ -4,10 +4,19 @@
     </head>
 
     <body style="margin: 0">
-        <canvas id="canvasContainer"></canvas>
+        <canvas id="canvas"></canvas>
 
         <script type="module">
-            import * as three_nanite from './three-nanite.js';
+            import {App} from './three-nanite.js';
+
+            const canvas = document.getElementById("canvas");
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+
+
+            const app = new App(canvas);
+
+            app.processObj("./data/models/bunny.obj");
         </script>
     </body>
 </html>

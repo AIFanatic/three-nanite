@@ -4,7 +4,7 @@
   "main": "index.js",
   "license": "MIT",
   "scripts": {
-    "dev": "esbuild src/index.ts --bundle --loader:.glsl=text --outfile=dist/three-nanite.js --target=es2020 --format=esm --watch"
+    "dev": "esbuild src/index.ts --bundle --loader:.glsl=text --loader:.ply=file --loader:.obj=file --outfile=dist/three-nanite.js --target=es2020 --format=esm --watch"
   },
   "devDependencies": {
     "esbuild": "^0.15.7",

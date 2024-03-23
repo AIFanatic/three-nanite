@@ -3,3 +3,5 @@
 node_modules
 research
 tmp
+dist/data/
+src-bak*
