@@ -1,4 +1,6 @@
 # THREE-Nanite
+### Note: The code is a mess at the moment.
+
 [Live demo](https://aifanatic.github.io/three-nanite/dist/index.html)
 <p align=center>
 <img src="./screenshots/showcase.gif">
