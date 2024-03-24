@@ -2,6 +2,14 @@ import { MeshoptMeshlet } from "./MeshletBuilder";
 import Module from "./meshoptimizer_clusterize";
 
 export class MeshletBuilder_wasm {
+    public static meshoptimizer_clusterize;
+
+    private static async load() {
+        if (!MeshletBuilder_wasm.meshoptimizer_clusterize) {
+            MeshletBuilder_wasm.meshoptimizer_clusterize = await Module();
+        }
+    }
+
     public static async build(vertices: Float32Array, indices: Uint32Array, max_vertices: number, max_triangles: number, cone_weight: number): Promise<{
         meshlet_count: number,
         meshlets_result: MeshoptMeshlet[],
@@ -9,7 +17,9 @@ export class MeshletBuilder_wasm {
         meshlet_triangles_result: Uint8Array
     }> {
 
-        const MeshOptmizer = await Module();
+        await MeshletBuilder_wasm.load();
+
+        const MeshOptmizer = MeshletBuilder_wasm.meshoptimizer_clusterize;
 
         const TYPES = {
             i8: { array: Int8Array, heap: "HEAP8" },

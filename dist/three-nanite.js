@@ -23832,8 +23832,14 @@ var meshoptimizer_clusterize_default = Module2;
 
 // src/utils/MeshletBuilder_wasm.ts
 var MeshletBuilder_wasm = class {
+  static async load() {
+    if (!MeshletBuilder_wasm.meshoptimizer_clusterize) {
+      MeshletBuilder_wasm.meshoptimizer_clusterize = await meshoptimizer_clusterize_default();
+    }
+  }
   static async build(vertices, indices, max_vertices, max_triangles, cone_weight) {
-    const MeshOptmizer = await meshoptimizer_clusterize_default();
+    await MeshletBuilder_wasm.load();
+    const MeshOptmizer = MeshletBuilder_wasm.meshoptimizer_clusterize;
     const TYPES = {
       i8: { array: Int8Array, heap: "HEAP8" },
       i16: { array: Int16Array, heap: "HEAP16" },
