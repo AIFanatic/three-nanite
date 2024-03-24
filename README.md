@@ -14,9 +14,6 @@ Photo description:
 - 5: Simplification: Simplify the mesh using [quadric mesh simplification](https://github.com/jannessm/quadric-mesh-simplification) (Garland 1997).
 - 6: Split: Similar to step 2.
 
-<br>
-Note: This project is not finished and the code is not particularly clean or performant.
-
 ## Description
 An attempt at reproducing a dynamic LOD in threejs similarly to unreal's nanite.
 Very far from it but nonetheless a start.
