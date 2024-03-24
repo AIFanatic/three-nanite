@@ -19,9 +19,5 @@ For now it clusters triangles into a "Cluster hierarchy" and performs merge and 
 
 
 ## TODO:
-- Make last step (Split simplified triangle list into clusters (128 tris))
-(page 52 - nanite).
-- Port everything into separate methods, so it can be called cleanly.
-- Get rid of threejs in mergeBufferGeometries.
-- Add Metis to perform grouping (uses MeshletEdgeFinder.getBoundary, needs metis port).
-- SimplifyModifierV4 pass vertices and indices directly so it doesn't rely on threejs OBJExported and OBJLoader.
+- Build DAG and perform cuts
+- Stream geometry to GPU
