@@ -16752,297 +16752,6 @@ var Scene = class extends Object3D {
     return data;
   }
 };
-var LineBasicMaterial = class extends Material {
-  constructor(parameters) {
-    super();
-    this.isLineBasicMaterial = true;
-    this.type = "LineBasicMaterial";
-    this.color = new Color(16777215);
-    this.linewidth = 1;
-    this.linecap = "round";
-    this.linejoin = "round";
-    this.fog = true;
-    this.setValues(parameters);
-  }
-  copy(source) {
-    super.copy(source);
-    this.color.copy(source.color);
-    this.linewidth = source.linewidth;
-    this.linecap = source.linecap;
-    this.linejoin = source.linejoin;
-    this.fog = source.fog;
-    return this;
-  }
-};
-var _start$1 = /* @__PURE__ */ new Vector3();
-var _end$1 = /* @__PURE__ */ new Vector3();
-var _inverseMatrix$1 = /* @__PURE__ */ new Matrix4();
-var _ray$1 = /* @__PURE__ */ new Ray();
-var _sphere$1 = /* @__PURE__ */ new Sphere();
-var Line = class extends Object3D {
-  constructor(geometry = new BufferGeometry(), material = new LineBasicMaterial()) {
-    super();
-    this.isLine = true;
-    this.type = "Line";
-    this.geometry = geometry;
-    this.material = material;
-    this.updateMorphTargets();
-  }
-  copy(source, recursive) {
-    super.copy(source, recursive);
-    this.material = source.material;
-    this.geometry = source.geometry;
-    return this;
-  }
-  computeLineDistances() {
-    const geometry = this.geometry;
-    if (geometry.index === null) {
-      const positionAttribute = geometry.attributes.position;
-      const lineDistances = [0];
-      for (let i = 1, l = positionAttribute.count; i < l; i++) {
-        _start$1.fromBufferAttribute(positionAttribute, i - 1);
-        _end$1.fromBufferAttribute(positionAttribute, i);
-        lineDistances[i] = lineDistances[i - 1];
-        lineDistances[i] += _start$1.distanceTo(_end$1);
-      }
-      geometry.setAttribute("lineDistance", new Float32BufferAttribute(lineDistances, 1));
-    } else {
-      console.warn("THREE.Line.computeLineDistances(): Computation only possible with non-indexed BufferGeometry.");
-    }
-    return this;
-  }
-  raycast(raycaster, intersects) {
-    const geometry = this.geometry;
-    const matrixWorld = this.matrixWorld;
-    const threshold = raycaster.params.Line.threshold;
-    const drawRange = geometry.drawRange;
-    if (geometry.boundingSphere === null)
-      geometry.computeBoundingSphere();
-    _sphere$1.copy(geometry.boundingSphere);
-    _sphere$1.applyMatrix4(matrixWorld);
-    _sphere$1.radius += threshold;
-    if (raycaster.ray.intersectsSphere(_sphere$1) === false)
-      return;
-    _inverseMatrix$1.copy(matrixWorld).invert();
-    _ray$1.copy(raycaster.ray).applyMatrix4(_inverseMatrix$1);
-    const localThreshold = threshold / ((this.scale.x + this.scale.y + this.scale.z) / 3);
-    const localThresholdSq = localThreshold * localThreshold;
-    const vStart = new Vector3();
-    const vEnd = new Vector3();
-    const interSegment = new Vector3();
-    const interRay = new Vector3();
-    const step = this.isLineSegments ? 2 : 1;
-    const index = geometry.index;
-    const attributes = geometry.attributes;
-    const positionAttribute = attributes.position;
-    if (index !== null) {
-      const start = Math.max(0, drawRange.start);
-      const end = Math.min(index.count, drawRange.start + drawRange.count);
-      for (let i = start, l = end - 1; i < l; i += step) {
-        const a = index.getX(i);
-        const b = index.getX(i + 1);
-        vStart.fromBufferAttribute(positionAttribute, a);
-        vEnd.fromBufferAttribute(positionAttribute, b);
-        const distSq = _ray$1.distanceSqToSegment(vStart, vEnd, interRay, interSegment);
-        if (distSq > localThresholdSq)
-          continue;
-        interRay.applyMatrix4(this.matrixWorld);
-        const distance = raycaster.ray.origin.distanceTo(interRay);
-        if (distance < raycaster.near || distance > raycaster.far)
-          continue;
-        intersects.push({
-          distance,
-          point: interSegment.clone().applyMatrix4(this.matrixWorld),
-          index: i,
-          face: null,
-          faceIndex: null,
-          object: this
-        });
-      }
-    } else {
-      const start = Math.max(0, drawRange.start);
-      const end = Math.min(positionAttribute.count, drawRange.start + drawRange.count);
-      for (let i = start, l = end - 1; i < l; i += step) {
-        vStart.fromBufferAttribute(positionAttribute, i);
-        vEnd.fromBufferAttribute(positionAttribute, i + 1);
-        const distSq = _ray$1.distanceSqToSegment(vStart, vEnd, interRay, interSegment);
-        if (distSq > localThresholdSq)
-          continue;
-        interRay.applyMatrix4(this.matrixWorld);
-        const distance = raycaster.ray.origin.distanceTo(interRay);
-        if (distance < raycaster.near || distance > raycaster.far)
-          continue;
-        intersects.push({
-          distance,
-          point: interSegment.clone().applyMatrix4(this.matrixWorld),
-          index: i,
-          face: null,
-          faceIndex: null,
-          object: this
-        });
-      }
-    }
-  }
-  updateMorphTargets() {
-    const geometry = this.geometry;
-    const morphAttributes = geometry.morphAttributes;
-    const keys = Object.keys(morphAttributes);
-    if (keys.length > 0) {
-      const morphAttribute = morphAttributes[keys[0]];
-      if (morphAttribute !== void 0) {
-        this.morphTargetInfluences = [];
-        this.morphTargetDictionary = {};
-        for (let m = 0, ml = morphAttribute.length; m < ml; m++) {
-          const name = morphAttribute[m].name || String(m);
-          this.morphTargetInfluences.push(0);
-          this.morphTargetDictionary[name] = m;
-        }
-      }
-    }
-  }
-};
-var _start = /* @__PURE__ */ new Vector3();
-var _end = /* @__PURE__ */ new Vector3();
-var LineSegments = class extends Line {
-  constructor(geometry, material) {
-    super(geometry, material);
-    this.isLineSegments = true;
-    this.type = "LineSegments";
-  }
-  computeLineDistances() {
-    const geometry = this.geometry;
-    if (geometry.index === null) {
-      const positionAttribute = geometry.attributes.position;
-      const lineDistances = [];
-      for (let i = 0, l = positionAttribute.count; i < l; i += 2) {
-        _start.fromBufferAttribute(positionAttribute, i);
-        _end.fromBufferAttribute(positionAttribute, i + 1);
-        lineDistances[i] = i === 0 ? 0 : lineDistances[i - 1];
-        lineDistances[i + 1] = lineDistances[i] + _start.distanceTo(_end);
-      }
-      geometry.setAttribute("lineDistance", new Float32BufferAttribute(lineDistances, 1));
-    } else {
-      console.warn("THREE.LineSegments.computeLineDistances(): Computation only possible with non-indexed BufferGeometry.");
-    }
-    return this;
-  }
-};
-var PointsMaterial = class extends Material {
-  constructor(parameters) {
-    super();
-    this.isPointsMaterial = true;
-    this.type = "PointsMaterial";
-    this.color = new Color(16777215);
-    this.map = null;
-    this.alphaMap = null;
-    this.size = 1;
-    this.sizeAttenuation = true;
-    this.fog = true;
-    this.setValues(parameters);
-  }
-  copy(source) {
-    super.copy(source);
-    this.color.copy(source.color);
-    this.map = source.map;
-    this.alphaMap = source.alphaMap;
-    this.size = source.size;
-    this.sizeAttenuation = source.sizeAttenuation;
-    this.fog = source.fog;
-    return this;
-  }
-};
-var _inverseMatrix = /* @__PURE__ */ new Matrix4();
-var _ray = /* @__PURE__ */ new Ray();
-var _sphere = /* @__PURE__ */ new Sphere();
-var _position$2 = /* @__PURE__ */ new Vector3();
-var Points = class extends Object3D {
-  constructor(geometry = new BufferGeometry(), material = new PointsMaterial()) {
-    super();
-    this.isPoints = true;
-    this.type = "Points";
-    this.geometry = geometry;
-    this.material = material;
-    this.updateMorphTargets();
-  }
-  copy(source, recursive) {
-    super.copy(source, recursive);
-    this.material = source.material;
-    this.geometry = source.geometry;
-    return this;
-  }
-  raycast(raycaster, intersects) {
-    const geometry = this.geometry;
-    const matrixWorld = this.matrixWorld;
-    const threshold = raycaster.params.Points.threshold;
-    const drawRange = geometry.drawRange;
-    if (geometry.boundingSphere === null)
-      geometry.computeBoundingSphere();
-    _sphere.copy(geometry.boundingSphere);
-    _sphere.applyMatrix4(matrixWorld);
-    _sphere.radius += threshold;
-    if (raycaster.ray.intersectsSphere(_sphere) === false)
-      return;
-    _inverseMatrix.copy(matrixWorld).invert();
-    _ray.copy(raycaster.ray).applyMatrix4(_inverseMatrix);
-    const localThreshold = threshold / ((this.scale.x + this.scale.y + this.scale.z) / 3);
-    const localThresholdSq = localThreshold * localThreshold;
-    const index = geometry.index;
-    const attributes = geometry.attributes;
-    const positionAttribute = attributes.position;
-    if (index !== null) {
-      const start = Math.max(0, drawRange.start);
-      const end = Math.min(index.count, drawRange.start + drawRange.count);
-      for (let i = start, il = end; i < il; i++) {
-        const a = index.getX(i);
-        _position$2.fromBufferAttribute(positionAttribute, a);
-        testPoint(_position$2, a, localThresholdSq, matrixWorld, raycaster, intersects, this);
-      }
-    } else {
-      const start = Math.max(0, drawRange.start);
-      const end = Math.min(positionAttribute.count, drawRange.start + drawRange.count);
-      for (let i = start, l = end; i < l; i++) {
-        _position$2.fromBufferAttribute(positionAttribute, i);
-        testPoint(_position$2, i, localThresholdSq, matrixWorld, raycaster, intersects, this);
-      }
-    }
-  }
-  updateMorphTargets() {
-    const geometry = this.geometry;
-    const morphAttributes = geometry.morphAttributes;
-    const keys = Object.keys(morphAttributes);
-    if (keys.length > 0) {
-      const morphAttribute = morphAttributes[keys[0]];
-      if (morphAttribute !== void 0) {
-        this.morphTargetInfluences = [];
-        this.morphTargetDictionary = {};
-        for (let m = 0, ml = morphAttribute.length; m < ml; m++) {
-          const name = morphAttribute[m].name || String(m);
-          this.morphTargetInfluences.push(0);
-          this.morphTargetDictionary[name] = m;
-        }
-      }
-    }
-  }
-};
-function testPoint(point, index, localThresholdSq, matrixWorld, raycaster, intersects, object) {
-  const rayPointDistanceSq = _ray.distanceSqToPoint(point);
-  if (rayPointDistanceSq < localThresholdSq) {
-    const intersectPoint = new Vector3();
-    _ray.closestPointToPoint(point, intersectPoint);
-    intersectPoint.applyMatrix4(matrixWorld);
-    const distance = raycaster.ray.origin.distanceTo(intersectPoint);
-    if (distance < raycaster.near || distance > raycaster.far)
-      return;
-    intersects.push({
-      distance,
-      distanceToRay: Math.sqrt(rayPointDistanceSq),
-      point: intersectPoint,
-      index,
-      face: null,
-      object
-    });
-  }
-}
 var SphereGeometry = class extends BufferGeometry {
   constructor(radius = 1, widthSegments = 32, heightSegments = 16, phiStart = 0, phiLength = Math.PI * 2, thetaStart = 0, thetaLength = Math.PI) {
     super();
@@ -17108,80 +16817,6 @@ var SphereGeometry = class extends BufferGeometry {
   }
   static fromJSON(data) {
     return new SphereGeometry(data.radius, data.widthSegments, data.heightSegments, data.phiStart, data.phiLength, data.thetaStart, data.thetaLength);
-  }
-};
-var MeshPhongMaterial = class extends Material {
-  constructor(parameters) {
-    super();
-    this.isMeshPhongMaterial = true;
-    this.type = "MeshPhongMaterial";
-    this.color = new Color(16777215);
-    this.specular = new Color(1118481);
-    this.shininess = 30;
-    this.map = null;
-    this.lightMap = null;
-    this.lightMapIntensity = 1;
-    this.aoMap = null;
-    this.aoMapIntensity = 1;
-    this.emissive = new Color(0);
-    this.emissiveIntensity = 1;
-    this.emissiveMap = null;
-    this.bumpMap = null;
-    this.bumpScale = 1;
-    this.normalMap = null;
-    this.normalMapType = TangentSpaceNormalMap;
-    this.normalScale = new Vector2(1, 1);
-    this.displacementMap = null;
-    this.displacementScale = 1;
-    this.displacementBias = 0;
-    this.specularMap = null;
-    this.alphaMap = null;
-    this.envMap = null;
-    this.combine = MultiplyOperation;
-    this.reflectivity = 1;
-    this.refractionRatio = 0.98;
-    this.wireframe = false;
-    this.wireframeLinewidth = 1;
-    this.wireframeLinecap = "round";
-    this.wireframeLinejoin = "round";
-    this.flatShading = false;
-    this.fog = true;
-    this.setValues(parameters);
-  }
-  copy(source) {
-    super.copy(source);
-    this.color.copy(source.color);
-    this.specular.copy(source.specular);
-    this.shininess = source.shininess;
-    this.map = source.map;
-    this.lightMap = source.lightMap;
-    this.lightMapIntensity = source.lightMapIntensity;
-    this.aoMap = source.aoMap;
-    this.aoMapIntensity = source.aoMapIntensity;
-    this.emissive.copy(source.emissive);
-    this.emissiveMap = source.emissiveMap;
-    this.emissiveIntensity = source.emissiveIntensity;
-    this.bumpMap = source.bumpMap;
-    this.bumpScale = source.bumpScale;
-    this.normalMap = source.normalMap;
-    this.normalMapType = source.normalMapType;
-    this.normalScale.copy(source.normalScale);
-    this.displacementMap = source.displacementMap;
-    this.displacementScale = source.displacementScale;
-    this.displacementBias = source.displacementBias;
-    this.specularMap = source.specularMap;
-    this.alphaMap = source.alphaMap;
-    this.envMap = source.envMap;
-    this.combine = source.combine;
-    this.reflectivity = source.reflectivity;
-    this.refractionRatio = source.refractionRatio;
-    this.wireframe = source.wireframe;
-    this.wireframeLinewidth = source.wireframeLinewidth;
-    this.wireframeLinecap = source.wireframeLinecap;
-    this.wireframeLinejoin = source.wireframeLinejoin;
-    this.flatShading = source.flatShading;
-    this.fog = source.fog;
-    return this;
   }
 };
 function arraySlice(array, from, to) {
@@ -17652,287 +17287,6 @@ StringKeyframeTrack.prototype.InterpolantFactoryMethodSmooth = void 0;
 var VectorKeyframeTrack = class extends KeyframeTrack {
 };
 VectorKeyframeTrack.prototype.ValueTypeName = "vector";
-var Cache = {
-  enabled: false,
-  files: {},
-  add: function(key, file) {
-    if (this.enabled === false)
-      return;
-    this.files[key] = file;
-  },
-  get: function(key) {
-    if (this.enabled === false)
-      return;
-    return this.files[key];
-  },
-  remove: function(key) {
-    delete this.files[key];
-  },
-  clear: function() {
-    this.files = {};
-  }
-};
-var LoadingManager = class {
-  constructor(onLoad, onProgress, onError) {
-    const scope = this;
-    let isLoading = false;
-    let itemsLoaded = 0;
-    let itemsTotal = 0;
-    let urlModifier = void 0;
-    const handlers = [];
-    this.onStart = void 0;
-    this.onLoad = onLoad;
-    this.onProgress = onProgress;
-    this.onError = onError;
-    this.itemStart = function(url) {
-      itemsTotal++;
-      if (isLoading === false) {
-        if (scope.onStart !== void 0) {
-          scope.onStart(url, itemsLoaded, itemsTotal);
-        }
-      }
-      isLoading = true;
-    };
-    this.itemEnd = function(url) {
-      itemsLoaded++;
-      if (scope.onProgress !== void 0) {
-        scope.onProgress(url, itemsLoaded, itemsTotal);
-      }
-      if (itemsLoaded === itemsTotal) {
-        isLoading = false;
-        if (scope.onLoad !== void 0) {
-          scope.onLoad();
-        }
-      }
-    };
-    this.itemError = function(url) {
-      if (scope.onError !== void 0) {
-        scope.onError(url);
-      }
-    };
-    this.resolveURL = function(url) {
-      if (urlModifier) {
-        return urlModifier(url);
-      }
-      return url;
-    };
-    this.setURLModifier = function(transform) {
-      urlModifier = transform;
-      return this;
-    };
-    this.addHandler = function(regex, loader) {
-      handlers.push(regex, loader);
-      return this;
-    };
-    this.removeHandler = function(regex) {
-      const index = handlers.indexOf(regex);
-      if (index !== -1) {
-        handlers.splice(index, 2);
-      }
-      return this;
-    };
-    this.getHandler = function(file) {
-      for (let i = 0, l = handlers.length; i < l; i += 2) {
-        const regex = handlers[i];
-        const loader = handlers[i + 1];
-        if (regex.global)
-          regex.lastIndex = 0;
-        if (regex.test(file)) {
-          return loader;
-        }
-      }
-      return null;
-    };
-  }
-};
-var DefaultLoadingManager = /* @__PURE__ */ new LoadingManager();
-var Loader = class {
-  constructor(manager) {
-    this.manager = manager !== void 0 ? manager : DefaultLoadingManager;
-    this.crossOrigin = "anonymous";
-    this.withCredentials = false;
-    this.path = "";
-    this.resourcePath = "";
-    this.requestHeader = {};
-  }
-  load() {
-  }
-  loadAsync(url, onProgress) {
-    const scope = this;
-    return new Promise(function(resolve, reject) {
-      scope.load(url, resolve, onProgress, reject);
-    });
-  }
-  parse() {
-  }
-  setCrossOrigin(crossOrigin) {
-    this.crossOrigin = crossOrigin;
-    return this;
-  }
-  setWithCredentials(value) {
-    this.withCredentials = value;
-    return this;
-  }
-  setPath(path) {
-    this.path = path;
-    return this;
-  }
-  setResourcePath(resourcePath) {
-    this.resourcePath = resourcePath;
-    return this;
-  }
-  setRequestHeader(requestHeader) {
-    this.requestHeader = requestHeader;
-    return this;
-  }
-};
-var loading = {};
-var HttpError = class extends Error {
-  constructor(message, response) {
-    super(message);
-    this.response = response;
-  }
-};
-var FileLoader = class extends Loader {
-  constructor(manager) {
-    super(manager);
-  }
-  load(url, onLoad, onProgress, onError) {
-    if (url === void 0)
-      url = "";
-    if (this.path !== void 0)
-      url = this.path + url;
-    url = this.manager.resolveURL(url);
-    const cached = Cache.get(url);
-    if (cached !== void 0) {
-      this.manager.itemStart(url);
-      setTimeout(() => {
-        if (onLoad)
-          onLoad(cached);
-        this.manager.itemEnd(url);
-      }, 0);
-      return cached;
-    }
-    if (loading[url] !== void 0) {
-      loading[url].push({
-        onLoad,
-        onProgress,
-        onError
-      });
-      return;
-    }
-    loading[url] = [];
-    loading[url].push({
-      onLoad,
-      onProgress,
-      onError
-    });
-    const req = new Request(url, {
-      headers: new Headers(this.requestHeader),
-      credentials: this.withCredentials ? "include" : "same-origin"
-    });
-    const mimeType = this.mimeType;
-    const responseType = this.responseType;
-    fetch(req).then((response) => {
-      if (response.status === 200 || response.status === 0) {
-        if (response.status === 0) {
-          console.warn("THREE.FileLoader: HTTP Status 0 received.");
-        }
-        if (typeof ReadableStream === "undefined" || response.body === void 0 || response.body.getReader === void 0) {
-          return response;
-        }
-        const callbacks = loading[url];
-        const reader = response.body.getReader();
-        const contentLength = response.headers.get("Content-Length");
-        const total = contentLength ? parseInt(contentLength) : 0;
-        const lengthComputable = total !== 0;
-        let loaded = 0;
-        const stream = new ReadableStream({
-          start(controller) {
-            readData();
-            function readData() {
-              reader.read().then(({ done, value }) => {
-                if (done) {
-                  controller.close();
-                } else {
-                  loaded += value.byteLength;
-                  const event = new ProgressEvent("progress", { lengthComputable, loaded, total });
-                  for (let i = 0, il = callbacks.length; i < il; i++) {
-                    const callback = callbacks[i];
-                    if (callback.onProgress)
-                      callback.onProgress(event);
-                  }
-                  controller.enqueue(value);
-                  readData();
-                }
-              });
-            }
-          }
-        });
-        return new Response(stream);
-      } else {
-        throw new HttpError(`fetch for "${response.url}" responded with ${response.status}: ${response.statusText}`, response);
-      }
-    }).then((response) => {
-      switch (responseType) {
-        case "arraybuffer":
-          return response.arrayBuffer();
-        case "blob":
-          return response.blob();
-        case "document":
-          return response.text().then((text) => {
-            const parser = new DOMParser();
-            return parser.parseFromString(text, mimeType);
-          });
-        case "json":
-          return response.json();
-        default:
-          if (mimeType === void 0) {
-            return response.text();
-          } else {
-            const re = /charset="?([^;"\s]*)"?/i;
-            const exec = re.exec(mimeType);
-            const label = exec && exec[1] ? exec[1].toLowerCase() : void 0;
-            const decoder = new TextDecoder(label);
-            return response.arrayBuffer().then((ab) => decoder.decode(ab));
-          }
-      }
-    }).then((data) => {
-      Cache.add(url, data);
-      const callbacks = loading[url];
-      delete loading[url];
-      for (let i = 0, il = callbacks.length; i < il; i++) {
-        const callback = callbacks[i];
-        if (callback.onLoad)
-          callback.onLoad(data);
-      }
-    }).catch((err) => {
-      const callbacks = loading[url];
-      if (callbacks === void 0) {
-        this.manager.itemError(url);
-        throw err;
-      }
-      delete loading[url];
-      for (let i = 0, il = callbacks.length; i < il; i++) {
-        const callback = callbacks[i];
-        if (callback.onError)
-          callback.onError(err);
-      }
-      this.manager.itemError(url);
-    }).finally(() => {
-      this.manager.itemEnd(url);
-    });
-    this.manager.itemStart(url);
-  }
-  setResponseType(value) {
-    this.responseType = value;
-    return this;
-  }
-  setMimeType(value) {
-    this.mimeType = value;
-    return this;
-  }
-};
 var _RESERVED_CHARS_RE = "\\[\\]\\.:\\/";
 var _reservedRe = new RegExp("[" + _RESERVED_CHARS_RE + "]", "g");
 var _wordChar = "[^" + _RESERVED_CHARS_RE + "]";
@@ -18984,507 +18338,6 @@ var OrbitControls = class extends EventDispatcher {
   }
 };
 
-// node_modules/three/examples/jsm/loaders/OBJLoader.js
-var _object_pattern = /^[og]\s*(.+)?/;
-var _material_library_pattern = /^mtllib /;
-var _material_use_pattern = /^usemtl /;
-var _map_use_pattern = /^usemap /;
-var _face_vertex_data_separator_pattern = /\s+/;
-var _vA = new Vector3();
-var _vB = new Vector3();
-var _vC = new Vector3();
-var _ab = new Vector3();
-var _cb = new Vector3();
-var _color = new Color();
-function ParserState() {
-  const state = {
-    objects: [],
-    object: {},
-    vertices: [],
-    normals: [],
-    colors: [],
-    uvs: [],
-    materials: {},
-    materialLibraries: [],
-    startObject: function(name, fromDeclaration) {
-      if (this.object && this.object.fromDeclaration === false) {
-        this.object.name = name;
-        this.object.fromDeclaration = fromDeclaration !== false;
-        return;
-      }
-      const previousMaterial = this.object && typeof this.object.currentMaterial === "function" ? this.object.currentMaterial() : void 0;
-      if (this.object && typeof this.object._finalize === "function") {
-        this.object._finalize(true);
-      }
-      this.object = {
-        name: name || "",
-        fromDeclaration: fromDeclaration !== false,
-        geometry: {
-          vertices: [],
-          normals: [],
-          colors: [],
-          uvs: [],
-          hasUVIndices: false
-        },
-        materials: [],
-        smooth: true,
-        startMaterial: function(name2, libraries) {
-          const previous = this._finalize(false);
-          if (previous && (previous.inherited || previous.groupCount <= 0)) {
-            this.materials.splice(previous.index, 1);
-          }
-          const material = {
-            index: this.materials.length,
-            name: name2 || "",
-            mtllib: Array.isArray(libraries) && libraries.length > 0 ? libraries[libraries.length - 1] : "",
-            smooth: previous !== void 0 ? previous.smooth : this.smooth,
-            groupStart: previous !== void 0 ? previous.groupEnd : 0,
-            groupEnd: -1,
-            groupCount: -1,
-            inherited: false,
-            clone: function(index) {
-              const cloned = {
-                index: typeof index === "number" ? index : this.index,
-                name: this.name,
-                mtllib: this.mtllib,
-                smooth: this.smooth,
-                groupStart: 0,
-                groupEnd: -1,
-                groupCount: -1,
-                inherited: false
-              };
-              cloned.clone = this.clone.bind(cloned);
-              return cloned;
-            }
-          };
-          this.materials.push(material);
-          return material;
-        },
-        currentMaterial: function() {
-          if (this.materials.length > 0) {
-            return this.materials[this.materials.length - 1];
-          }
-          return void 0;
-        },
-        _finalize: function(end) {
-          const lastMultiMaterial = this.currentMaterial();
-          if (lastMultiMaterial && lastMultiMaterial.groupEnd === -1) {
-            lastMultiMaterial.groupEnd = this.geometry.vertices.length / 3;
-            lastMultiMaterial.groupCount = lastMultiMaterial.groupEnd - lastMultiMaterial.groupStart;
-            lastMultiMaterial.inherited = false;
-          }
-          if (end && this.materials.length > 1) {
-            for (let mi = this.materials.length - 1; mi >= 0; mi--) {
-              if (this.materials[mi].groupCount <= 0) {
-                this.materials.splice(mi, 1);
-              }
-            }
-          }
-          if (end && this.materials.length === 0) {
-            this.materials.push({
-              name: "",
-              smooth: this.smooth
-            });
-          }
-          return lastMultiMaterial;
-        }
-      };
-      if (previousMaterial && previousMaterial.name && typeof previousMaterial.clone === "function") {
-        const declared = previousMaterial.clone(0);
-        declared.inherited = true;
-        this.object.materials.push(declared);
-      }
-      this.objects.push(this.object);
-    },
-    finalize: function() {
-      if (this.object && typeof this.object._finalize === "function") {
-        this.object._finalize(true);
-      }
-    },
-    parseVertexIndex: function(value, len) {
-      const index = parseInt(value, 10);
-      return (index >= 0 ? index - 1 : index + len / 3) * 3;
-    },
-    parseNormalIndex: function(value, len) {
-      const index = parseInt(value, 10);
-      return (index >= 0 ? index - 1 : index + len / 3) * 3;
-    },
-    parseUVIndex: function(value, len) {
-      const index = parseInt(value, 10);
-      return (index >= 0 ? index - 1 : index + len / 2) * 2;
-    },
-    addVertex: function(a, b, c) {
-      const src = this.vertices;
-      const dst = this.object.geometry.vertices;
-      dst.push(src[a + 0], src[a + 1], src[a + 2]);
-      dst.push(src[b + 0], src[b + 1], src[b + 2]);
-      dst.push(src[c + 0], src[c + 1], src[c + 2]);
-    },
-    addVertexPoint: function(a) {
-      const src = this.vertices;
-      const dst = this.object.geometry.vertices;
-      dst.push(src[a + 0], src[a + 1], src[a + 2]);
-    },
-    addVertexLine: function(a) {
-      const src = this.vertices;
-      const dst = this.object.geometry.vertices;
-      dst.push(src[a + 0], src[a + 1], src[a + 2]);
-    },
-    addNormal: function(a, b, c) {
-      const src = this.normals;
-      const dst = this.object.geometry.normals;
-      dst.push(src[a + 0], src[a + 1], src[a + 2]);
-      dst.push(src[b + 0], src[b + 1], src[b + 2]);
-      dst.push(src[c + 0], src[c + 1], src[c + 2]);
-    },
-    addFaceNormal: function(a, b, c) {
-      const src = this.vertices;
-      const dst = this.object.geometry.normals;
-      _vA.fromArray(src, a);
-      _vB.fromArray(src, b);
-      _vC.fromArray(src, c);
-      _cb.subVectors(_vC, _vB);
-      _ab.subVectors(_vA, _vB);
-      _cb.cross(_ab);
-      _cb.normalize();
-      dst.push(_cb.x, _cb.y, _cb.z);
-      dst.push(_cb.x, _cb.y, _cb.z);
-      dst.push(_cb.x, _cb.y, _cb.z);
-    },
-    addColor: function(a, b, c) {
-      const src = this.colors;
-      const dst = this.object.geometry.colors;
-      if (src[a] !== void 0)
-        dst.push(src[a + 0], src[a + 1], src[a + 2]);
-      if (src[b] !== void 0)
-        dst.push(src[b + 0], src[b + 1], src[b + 2]);
-      if (src[c] !== void 0)
-        dst.push(src[c + 0], src[c + 1], src[c + 2]);
-    },
-    addUV: function(a, b, c) {
-      const src = this.uvs;
-      const dst = this.object.geometry.uvs;
-      dst.push(src[a + 0], src[a + 1]);
-      dst.push(src[b + 0], src[b + 1]);
-      dst.push(src[c + 0], src[c + 1]);
-    },
-    addDefaultUV: function() {
-      const dst = this.object.geometry.uvs;
-      dst.push(0, 0);
-      dst.push(0, 0);
-      dst.push(0, 0);
-    },
-    addUVLine: function(a) {
-      const src = this.uvs;
-      const dst = this.object.geometry.uvs;
-      dst.push(src[a + 0], src[a + 1]);
-    },
-    addFace: function(a, b, c, ua, ub, uc, na, nb, nc) {
-      const vLen = this.vertices.length;
-      let ia = this.parseVertexIndex(a, vLen);
-      let ib = this.parseVertexIndex(b, vLen);
-      let ic = this.parseVertexIndex(c, vLen);
-      this.addVertex(ia, ib, ic);
-      this.addColor(ia, ib, ic);
-      if (na !== void 0 && na !== "") {
-        const nLen = this.normals.length;
-        ia = this.parseNormalIndex(na, nLen);
-        ib = this.parseNormalIndex(nb, nLen);
-        ic = this.parseNormalIndex(nc, nLen);
-        this.addNormal(ia, ib, ic);
-      } else {
-        this.addFaceNormal(ia, ib, ic);
-      }
-      if (ua !== void 0 && ua !== "") {
-        const uvLen = this.uvs.length;
-        ia = this.parseUVIndex(ua, uvLen);
-        ib = this.parseUVIndex(ub, uvLen);
-        ic = this.parseUVIndex(uc, uvLen);
-        this.addUV(ia, ib, ic);
-        this.object.geometry.hasUVIndices = true;
-      } else {
-        this.addDefaultUV();
-      }
-    },
-    addPointGeometry: function(vertices) {
-      this.object.geometry.type = "Points";
-      const vLen = this.vertices.length;
-      for (let vi = 0, l = vertices.length; vi < l; vi++) {
-        const index = this.parseVertexIndex(vertices[vi], vLen);
-        this.addVertexPoint(index);
-        this.addColor(index);
-      }
-    },
-    addLineGeometry: function(vertices, uvs) {
-      this.object.geometry.type = "Line";
-      const vLen = this.vertices.length;
-      const uvLen = this.uvs.length;
-      for (let vi = 0, l = vertices.length; vi < l; vi++) {
-        this.addVertexLine(this.parseVertexIndex(vertices[vi], vLen));
-      }
-      for (let uvi = 0, l = uvs.length; uvi < l; uvi++) {
-        this.addUVLine(this.parseUVIndex(uvs[uvi], uvLen));
-      }
-    }
-  };
-  state.startObject("", false);
-  return state;
-}
-var OBJLoader = class extends Loader {
-  constructor(manager) {
-    super(manager);
-    this.materials = null;
-  }
-  load(url, onLoad, onProgress, onError) {
-    const scope = this;
-    const loader = new FileLoader(this.manager);
-    loader.setPath(this.path);
-    loader.setRequestHeader(this.requestHeader);
-    loader.setWithCredentials(this.withCredentials);
-    loader.load(url, function(text) {
-      try {
-        onLoad(scope.parse(text));
-      } catch (e) {
-        if (onError) {
-          onError(e);
-        } else {
-          console.error(e);
-        }
-        scope.manager.itemError(url);
-      }
-    }, onProgress, onError);
-  }
-  setMaterials(materials) {
-    this.materials = materials;
-    return this;
-  }
-  parse(text) {
-    const state = new ParserState();
-    if (text.indexOf("\r\n") !== -1) {
-      text = text.replace(/\r\n/g, "\n");
-    }
-    if (text.indexOf("\\\n") !== -1) {
-      text = text.replace(/\\\n/g, "");
-    }
-    const lines = text.split("\n");
-    let result = [];
-    for (let i = 0, l = lines.length; i < l; i++) {
-      const line = lines[i].trimStart();
-      if (line.length === 0)
-        continue;
-      const lineFirstChar = line.charAt(0);
-      if (lineFirstChar === "#")
-        continue;
-      if (lineFirstChar === "v") {
-        const data = line.split(_face_vertex_data_separator_pattern);
-        switch (data[0]) {
-          case "v":
-            state.vertices.push(
-              parseFloat(data[1]),
-              parseFloat(data[2]),
-              parseFloat(data[3])
-            );
-            if (data.length >= 7) {
-              _color.setRGB(
-                parseFloat(data[4]),
-                parseFloat(data[5]),
-                parseFloat(data[6])
-              ).convertSRGBToLinear();
-              state.colors.push(_color.r, _color.g, _color.b);
-            } else {
-              state.colors.push(void 0, void 0, void 0);
-            }
-            break;
-          case "vn":
-            state.normals.push(
-              parseFloat(data[1]),
-              parseFloat(data[2]),
-              parseFloat(data[3])
-            );
-            break;
-          case "vt":
-            state.uvs.push(
-              parseFloat(data[1]),
-              parseFloat(data[2])
-            );
-            break;
-        }
-      } else if (lineFirstChar === "f") {
-        const lineData = line.slice(1).trim();
-        const vertexData = lineData.split(_face_vertex_data_separator_pattern);
-        const faceVertices = [];
-        for (let j = 0, jl = vertexData.length; j < jl; j++) {
-          const vertex2 = vertexData[j];
-          if (vertex2.length > 0) {
-            const vertexParts = vertex2.split("/");
-            faceVertices.push(vertexParts);
-          }
-        }
-        const v1 = faceVertices[0];
-        for (let j = 1, jl = faceVertices.length - 1; j < jl; j++) {
-          const v2 = faceVertices[j];
-          const v3 = faceVertices[j + 1];
-          state.addFace(
-            v1[0],
-            v2[0],
-            v3[0],
-            v1[1],
-            v2[1],
-            v3[1],
-            v1[2],
-            v2[2],
-            v3[2]
-          );
-        }
-      } else if (lineFirstChar === "l") {
-        const lineParts = line.substring(1).trim().split(" ");
-        let lineVertices = [];
-        const lineUVs = [];
-        if (line.indexOf("/") === -1) {
-          lineVertices = lineParts;
-        } else {
-          for (let li = 0, llen = lineParts.length; li < llen; li++) {
-            const parts = lineParts[li].split("/");
-            if (parts[0] !== "")
-              lineVertices.push(parts[0]);
-            if (parts[1] !== "")
-              lineUVs.push(parts[1]);
-          }
-        }
-        state.addLineGeometry(lineVertices, lineUVs);
-      } else if (lineFirstChar === "p") {
-        const lineData = line.slice(1).trim();
-        const pointData = lineData.split(" ");
-        state.addPointGeometry(pointData);
-      } else if ((result = _object_pattern.exec(line)) !== null) {
-        const name = (" " + result[0].slice(1).trim()).slice(1);
-        state.startObject(name);
-      } else if (_material_use_pattern.test(line)) {
-        state.object.startMaterial(line.substring(7).trim(), state.materialLibraries);
-      } else if (_material_library_pattern.test(line)) {
-        state.materialLibraries.push(line.substring(7).trim());
-      } else if (_map_use_pattern.test(line)) {
-        console.warn('THREE.OBJLoader: Rendering identifier "usemap" not supported. Textures must be defined in MTL files.');
-      } else if (lineFirstChar === "s") {
-        result = line.split(" ");
-        if (result.length > 1) {
-          const value = result[1].trim().toLowerCase();
-          state.object.smooth = value !== "0" && value !== "off";
-        } else {
-          state.object.smooth = true;
-        }
-        const material = state.object.currentMaterial();
-        if (material)
-          material.smooth = state.object.smooth;
-      } else {
-        if (line === "\0")
-          continue;
-        console.warn('THREE.OBJLoader: Unexpected line: "' + line + '"');
-      }
-    }
-    state.finalize();
-    const container = new Group();
-    container.materialLibraries = [].concat(state.materialLibraries);
-    const hasPrimitives = !(state.objects.length === 1 && state.objects[0].geometry.vertices.length === 0);
-    if (hasPrimitives === true) {
-      for (let i = 0, l = state.objects.length; i < l; i++) {
-        const object = state.objects[i];
-        const geometry = object.geometry;
-        const materials = object.materials;
-        const isLine = geometry.type === "Line";
-        const isPoints = geometry.type === "Points";
-        let hasVertexColors = false;
-        if (geometry.vertices.length === 0)
-          continue;
-        const buffergeometry = new BufferGeometry();
-        buffergeometry.setAttribute("position", new Float32BufferAttribute(geometry.vertices, 3));
-        if (geometry.normals.length > 0) {
-          buffergeometry.setAttribute("normal", new Float32BufferAttribute(geometry.normals, 3));
-        }
-        if (geometry.colors.length > 0) {
-          hasVertexColors = true;
-          buffergeometry.setAttribute("color", new Float32BufferAttribute(geometry.colors, 3));
-        }
-        if (geometry.hasUVIndices === true) {
-          buffergeometry.setAttribute("uv", new Float32BufferAttribute(geometry.uvs, 2));
-        }
-        const createdMaterials = [];
-        for (let mi = 0, miLen = materials.length; mi < miLen; mi++) {
-          const sourceMaterial = materials[mi];
-          const materialHash = sourceMaterial.name + "_" + sourceMaterial.smooth + "_" + hasVertexColors;
-          let material = state.materials[materialHash];
-          if (this.materials !== null) {
-            material = this.materials.create(sourceMaterial.name);
-            if (isLine && material && !(material instanceof LineBasicMaterial)) {
-              const materialLine = new LineBasicMaterial();
-              Material.prototype.copy.call(materialLine, material);
-              materialLine.color.copy(material.color);
-              material = materialLine;
-            } else if (isPoints && material && !(material instanceof PointsMaterial)) {
-              const materialPoints = new PointsMaterial({ size: 10, sizeAttenuation: false });
-              Material.prototype.copy.call(materialPoints, material);
-              materialPoints.color.copy(material.color);
-              materialPoints.map = material.map;
-              material = materialPoints;
-            }
-          }
-          if (material === void 0) {
-            if (isLine) {
-              material = new LineBasicMaterial();
-            } else if (isPoints) {
-              material = new PointsMaterial({ size: 1, sizeAttenuation: false });
-            } else {
-              material = new MeshPhongMaterial();
-            }
-            material.name = sourceMaterial.name;
-            material.flatShading = sourceMaterial.smooth ? false : true;
-            material.vertexColors = hasVertexColors;
-            state.materials[materialHash] = material;
-          }
-          createdMaterials.push(material);
-        }
-        let mesh;
-        if (createdMaterials.length > 1) {
-          for (let mi = 0, miLen = materials.length; mi < miLen; mi++) {
-            const sourceMaterial = materials[mi];
-            buffergeometry.addGroup(sourceMaterial.groupStart, sourceMaterial.groupCount, mi);
-          }
-          if (isLine) {
-            mesh = new LineSegments(buffergeometry, createdMaterials);
-          } else if (isPoints) {
-            mesh = new Points(buffergeometry, createdMaterials);
-          } else {
-            mesh = new Mesh(buffergeometry, createdMaterials);
-          }
-        } else {
-          if (isLine) {
-            mesh = new LineSegments(buffergeometry, createdMaterials[0]);
-          } else if (isPoints) {
-            mesh = new Points(buffergeometry, createdMaterials[0]);
-          } else {
-            mesh = new Mesh(buffergeometry, createdMaterials[0]);
-          }
-        }
-        mesh.name = object.name;
-        container.add(mesh);
-      }
-    } else {
-      if (state.vertices.length > 0) {
-        const material = new PointsMaterial({ size: 1, sizeAttenuation: false });
-        const buffergeometry = new BufferGeometry();
-        buffergeometry.setAttribute("position", new Float32BufferAttribute(state.vertices, 3));
-        if (state.colors.length > 0 && state.colors[0] !== void 0) {
-          buffergeometry.setAttribute("color", new Float32BufferAttribute(state.colors, 3));
-          material.vertexColors = true;
-        }
-        const points = new Points(buffergeometry, material);
-        container.add(points);
-      }
-    }
-    return container;
-  }
-};
-
 // src/BetterStats.ts
 var BetterStats = class {
   constructor(webglRenderer) {
@@ -19533,23 +18386,23 @@ var BetterStats = class {
 // src/qms/qms.js
 var Module = (() => {
   var _scriptDir = import.meta.url;
-  return function(Module3) {
-    Module3 = Module3 || {};
-    var Module3 = typeof Module3 != "undefined" ? Module3 : {};
+  return function(Module4) {
+    Module4 = Module4 || {};
+    var Module4 = typeof Module4 != "undefined" ? Module4 : {};
     var readyPromiseResolve, readyPromiseReject;
-    Module3["ready"] = new Promise(function(resolve, reject) {
+    Module4["ready"] = new Promise(function(resolve, reject) {
       readyPromiseResolve = resolve;
       readyPromiseReject = reject;
     });
-    ["_simplify", "_fflush", "onRuntimeInitialized"].forEach((prop) => {
-      if (!Object.getOwnPropertyDescriptor(Module3["ready"], prop)) {
-        Object.defineProperty(Module3["ready"], prop, {
+    ["_malloc", "_simplify", "_simplify_obj", "_get_simplified_vertex_count", "_get_simplified_triangle_count", "_fflush", "onRuntimeInitialized"].forEach((prop) => {
+      if (!Object.getOwnPropertyDescriptor(Module4["ready"], prop)) {
+        Object.defineProperty(Module4["ready"], prop, {
           get: () => abort("You are getting " + prop + " on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js"),
           set: () => abort("You are setting " + prop + " on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js")
         });
       }
     });
-    var moduleOverrides = Object.assign({}, Module3);
+    var moduleOverrides = Object.assign({}, Module4);
     var arguments_ = [];
     var thisProgram = "./this.program";
     var quit_ = (status, toThrow) => {
@@ -19559,13 +18412,13 @@ var Module = (() => {
     var ENVIRONMENT_IS_WORKER = false;
     var ENVIRONMENT_IS_NODE = false;
     var ENVIRONMENT_IS_SHELL = false;
-    if (Module3["ENVIRONMENT"]) {
+    if (Module4["ENVIRONMENT"]) {
       throw new Error("Module.ENVIRONMENT has been deprecated. To force the environment, use the ENVIRONMENT compile-time option (for example, -sENVIRONMENT=web or -sENVIRONMENT=node)");
     }
     var scriptDirectory = "";
     function locateFile(path) {
-      if (Module3["locateFile"]) {
-        return Module3["locateFile"](path, scriptDirectory);
+      if (Module4["locateFile"]) {
+        return Module4["locateFile"](path, scriptDirectory);
       }
       return scriptDirectory + path;
     }
@@ -19667,29 +18520,29 @@ var Module = (() => {
     } else {
       throw new Error("environment detection error");
     }
-    var out = Module3["print"] || console.log.bind(console);
-    var err = Module3["printErr"] || console.warn.bind(console);
-    Object.assign(Module3, moduleOverrides);
+    var out = Module4["print"] || console.log.bind(console);
+    var err = Module4["printErr"] || console.warn.bind(console);
+    Object.assign(Module4, moduleOverrides);
     moduleOverrides = null;
     checkIncomingModuleAPI();
-    if (Module3["arguments"])
-      arguments_ = Module3["arguments"];
+    if (Module4["arguments"])
+      arguments_ = Module4["arguments"];
     legacyModuleProp("arguments", "arguments_");
-    if (Module3["thisProgram"])
-      thisProgram = Module3["thisProgram"];
+    if (Module4["thisProgram"])
+      thisProgram = Module4["thisProgram"];
     legacyModuleProp("thisProgram", "thisProgram");
-    if (Module3["quit"])
-      quit_ = Module3["quit"];
+    if (Module4["quit"])
+      quit_ = Module4["quit"];
     legacyModuleProp("quit", "quit_");
-    assert2(typeof Module3["memoryInitializerPrefixURL"] == "undefined", "Module.memoryInitializerPrefixURL option was removed, use Module.locateFile instead");
-    assert2(typeof Module3["pthreadMainPrefixURL"] == "undefined", "Module.pthreadMainPrefixURL option was removed, use Module.locateFile instead");
-    assert2(typeof Module3["cdInitializerPrefixURL"] == "undefined", "Module.cdInitializerPrefixURL option was removed, use Module.locateFile instead");
-    assert2(typeof Module3["filePackagePrefixURL"] == "undefined", "Module.filePackagePrefixURL option was removed, use Module.locateFile instead");
-    assert2(typeof Module3["read"] == "undefined", "Module.read option was removed (modify read_ in JS)");
-    assert2(typeof Module3["readAsync"] == "undefined", "Module.readAsync option was removed (modify readAsync in JS)");
-    assert2(typeof Module3["readBinary"] == "undefined", "Module.readBinary option was removed (modify readBinary in JS)");
-    assert2(typeof Module3["setWindowTitle"] == "undefined", "Module.setWindowTitle option was removed (modify setWindowTitle in JS)");
-    assert2(typeof Module3["TOTAL_MEMORY"] == "undefined", "Module.TOTAL_MEMORY has been renamed Module.INITIAL_MEMORY");
+    assert2(typeof Module4["memoryInitializerPrefixURL"] == "undefined", "Module.memoryInitializerPrefixURL option was removed, use Module.locateFile instead");
+    assert2(typeof Module4["pthreadMainPrefixURL"] == "undefined", "Module.pthreadMainPrefixURL option was removed, use Module.locateFile instead");
+    assert2(typeof Module4["cdInitializerPrefixURL"] == "undefined", "Module.cdInitializerPrefixURL option was removed, use Module.locateFile instead");
+    assert2(typeof Module4["filePackagePrefixURL"] == "undefined", "Module.filePackagePrefixURL option was removed, use Module.locateFile instead");
+    assert2(typeof Module4["read"] == "undefined", "Module.read option was removed (modify read_ in JS)");
+    assert2(typeof Module4["readAsync"] == "undefined", "Module.readAsync option was removed (modify readAsync in JS)");
+    assert2(typeof Module4["readBinary"] == "undefined", "Module.readBinary option was removed (modify readBinary in JS)");
+    assert2(typeof Module4["setWindowTitle"] == "undefined", "Module.setWindowTitle option was removed (modify setWindowTitle in JS)");
+    assert2(typeof Module4["TOTAL_MEMORY"] == "undefined", "Module.TOTAL_MEMORY has been renamed Module.INITIAL_MEMORY");
     legacyModuleProp("read", "read_");
     legacyModuleProp("readAsync", "readAsync");
     legacyModuleProp("readBinary", "readBinary");
@@ -19736,8 +18589,8 @@ var Module = (() => {
       }
     }
     function legacyModuleProp(prop, newName) {
-      if (!Object.getOwnPropertyDescriptor(Module3, prop)) {
-        Object.defineProperty(Module3, prop, {
+      if (!Object.getOwnPropertyDescriptor(Module4, prop)) {
+        Object.defineProperty(Module4, prop, {
           configurable: true,
           get: function() {
             abort("Module." + prop + " has been replaced with plain " + newName + " (the initial value can be provided on Module, but after startup the value is only looked for on a local variable of that name)");
@@ -19746,7 +18599,7 @@ var Module = (() => {
       }
     }
     function ignoredModuleProp(prop) {
-      if (Object.getOwnPropertyDescriptor(Module3, prop)) {
+      if (Object.getOwnPropertyDescriptor(Module4, prop)) {
         abort("`Module." + prop + "` was supplied but `" + prop + "` not included in INCOMING_MODULE_JS_API");
       }
     }
@@ -19769,8 +18622,8 @@ var Module = (() => {
       }
     }
     function unexportedRuntimeSymbol(sym) {
-      if (!Object.getOwnPropertyDescriptor(Module3, sym)) {
-        Object.defineProperty(Module3, sym, {
+      if (!Object.getOwnPropertyDescriptor(Module4, sym)) {
+        Object.defineProperty(Module4, sym, {
           configurable: true,
           get: function() {
             var msg = "'" + sym + "' was not exported. add it to EXPORTED_RUNTIME_METHODS (see the FAQ)";
@@ -19783,10 +18636,10 @@ var Module = (() => {
       }
     }
     var wasmBinary;
-    if (Module3["wasmBinary"])
-      wasmBinary = Module3["wasmBinary"];
+    if (Module4["wasmBinary"])
+      wasmBinary = Module4["wasmBinary"];
     legacyModuleProp("wasmBinary", "wasmBinary");
-    var noExitRuntime = Module3["noExitRuntime"] || true;
+    var noExitRuntime = Module4["noExitRuntime"] || true;
     legacyModuleProp("noExitRuntime", "noExitRuntime");
     if (typeof WebAssembly != "object") {
       abort("no native wasm support detected");
@@ -19798,6 +18651,9 @@ var Module = (() => {
       if (!condition) {
         abort("Assertion failed" + (text ? ": " + text : ""));
       }
+    }
+    function _free() {
+      abort("free() called but not included in the build - add '_free' to EXPORTED_FUNCTIONS");
     }
     var UTF8Decoder = typeof TextDecoder != "undefined" ? new TextDecoder("utf8") : void 0;
     function UTF8ArrayToString(heapOrArray, idx, maxBytesToRead) {
@@ -19904,26 +18760,26 @@ var Module = (() => {
     var HEAP, buffer, HEAP8, HEAPU8, HEAP16, HEAPU16, HEAP32, HEAPU32, HEAPF32, HEAPF64;
     function updateGlobalBufferAndViews(buf) {
       buffer = buf;
-      Module3["HEAP8"] = HEAP8 = new Int8Array(buf);
-      Module3["HEAP16"] = HEAP16 = new Int16Array(buf);
-      Module3["HEAP32"] = HEAP32 = new Int32Array(buf);
-      Module3["HEAPU8"] = HEAPU8 = new Uint8Array(buf);
-      Module3["HEAPU16"] = HEAPU16 = new Uint16Array(buf);
-      Module3["HEAPU32"] = HEAPU32 = new Uint32Array(buf);
-      Module3["HEAPF32"] = HEAPF32 = new Float32Array(buf);
-      Module3["HEAPF64"] = HEAPF64 = new Float64Array(buf);
+      Module4["HEAP8"] = HEAP8 = new Int8Array(buf);
+      Module4["HEAP16"] = HEAP16 = new Int16Array(buf);
+      Module4["HEAP32"] = HEAP32 = new Int32Array(buf);
+      Module4["HEAPU8"] = HEAPU8 = new Uint8Array(buf);
+      Module4["HEAPU16"] = HEAPU16 = new Uint16Array(buf);
+      Module4["HEAPU32"] = HEAPU32 = new Uint32Array(buf);
+      Module4["HEAPF32"] = HEAPF32 = new Float32Array(buf);
+      Module4["HEAPF64"] = HEAPF64 = new Float64Array(buf);
     }
     var TOTAL_STACK = 5242880;
-    if (Module3["TOTAL_STACK"])
-      assert2(TOTAL_STACK === Module3["TOTAL_STACK"], "the stack size can no longer be determined at runtime");
-    var INITIAL_MEMORY = Module3["INITIAL_MEMORY"] || 16777216;
+    if (Module4["TOTAL_STACK"])
+      assert2(TOTAL_STACK === Module4["TOTAL_STACK"], "the stack size can no longer be determined at runtime");
+    var INITIAL_MEMORY = Module4["INITIAL_MEMORY"] || 16777216;
     legacyModuleProp("INITIAL_MEMORY", "INITIAL_MEMORY");
     assert2(INITIAL_MEMORY >= TOTAL_STACK, "INITIAL_MEMORY should be larger than TOTAL_STACK, was " + INITIAL_MEMORY + "! (TOTAL_STACK=" + TOTAL_STACK + ")");
     assert2(
       typeof Int32Array != "undefined" && typeof Float64Array !== "undefined" && Int32Array.prototype.subarray != void 0 && Int32Array.prototype.set != void 0,
       "JS engine does not provide full typed array support"
     );
-    assert2(!Module3["wasmMemory"], "Use of `wasmMemory` detected.  Use -sIMPORTED_MEMORY to define wasmMemory externally");
+    assert2(!Module4["wasmMemory"], "Use of `wasmMemory` detected.  Use -sIMPORTED_MEMORY to define wasmMemory externally");
     assert2(INITIAL_MEMORY == 16777216, "Detected runtime INITIAL_MEMORY setting.  Use -sIMPORTED_MEMORY to define wasmMemory dynamically");
     var wasmTable;
     function writeStackCookie() {
@@ -19961,11 +18817,11 @@ var Module = (() => {
       return noExitRuntime;
     }
     function preRun() {
-      if (Module3["preRun"]) {
-        if (typeof Module3["preRun"] == "function")
-          Module3["preRun"] = [Module3["preRun"]];
-        while (Module3["preRun"].length) {
-          addOnPreRun(Module3["preRun"].shift());
+      if (Module4["preRun"]) {
+        if (typeof Module4["preRun"] == "function")
+          Module4["preRun"] = [Module4["preRun"]];
+        while (Module4["preRun"].length) {
+          addOnPreRun(Module4["preRun"].shift());
         }
       }
       callRuntimeCallbacks(__ATPRERUN__);
@@ -19974,7 +18830,7 @@ var Module = (() => {
       assert2(!runtimeInitialized);
       runtimeInitialized = true;
       checkStackCookie();
-      if (!Module3["noFSInit"] && !FS.init.initialized)
+      if (!Module4["noFSInit"] && !FS.init.initialized)
         FS.init();
       FS.ignorePermissions = false;
       TTY.init();
@@ -19982,11 +18838,11 @@ var Module = (() => {
     }
     function postRun() {
       checkStackCookie();
-      if (Module3["postRun"]) {
-        if (typeof Module3["postRun"] == "function")
-          Module3["postRun"] = [Module3["postRun"]];
-        while (Module3["postRun"].length) {
-          addOnPostRun(Module3["postRun"].shift());
+      if (Module4["postRun"]) {
+        if (typeof Module4["postRun"] == "function")
+          Module4["postRun"] = [Module4["postRun"]];
+        while (Module4["postRun"].length) {
+          addOnPostRun(Module4["postRun"].shift());
         }
       }
       callRuntimeCallbacks(__ATPOSTRUN__);
@@ -20020,8 +18876,8 @@ var Module = (() => {
     }
     function addRunDependency(id) {
       runDependencies++;
-      if (Module3["monitorRunDependencies"]) {
-        Module3["monitorRunDependencies"](runDependencies);
+      if (Module4["monitorRunDependencies"]) {
+        Module4["monitorRunDependencies"](runDependencies);
       }
       if (id) {
         assert2(!runDependencyTracking[id]);
@@ -20052,8 +18908,8 @@ var Module = (() => {
     }
     function removeRunDependency(id) {
       runDependencies--;
-      if (Module3["monitorRunDependencies"]) {
-        Module3["monitorRunDependencies"](runDependencies);
+      if (Module4["monitorRunDependencies"]) {
+        Module4["monitorRunDependencies"](runDependencies);
       }
       if (id) {
         assert2(runDependencyTracking[id]);
@@ -20075,8 +18931,8 @@ var Module = (() => {
     }
     function abort(what) {
       {
-        if (Module3["onAbort"]) {
-          Module3["onAbort"](what);
+        if (Module4["onAbort"]) {
+          Module4["onAbort"](what);
         }
       }
       what = "Aborted(" + what + ")";
@@ -20099,7 +18955,7 @@ var Module = (() => {
         var displayName = name;
         var asm2 = fixedasm;
         if (!fixedasm) {
-          asm2 = Module3["asm"];
+          asm2 = Module4["asm"];
         }
         assert2(runtimeInitialized, "native function `" + displayName + "` called before runtime initialization");
         if (!asm2[name]) {
@@ -20109,7 +18965,7 @@ var Module = (() => {
       };
     }
     var wasmBinaryFile;
-    if (Module3["locateFile"]) {
+    if (Module4["locateFile"]) {
       wasmBinaryFile = "qms.wasm";
       if (!isDataURI(wasmBinaryFile)) {
         wasmBinaryFile = locateFile(wasmBinaryFile);
@@ -20154,19 +19010,19 @@ var Module = (() => {
       };
       function receiveInstance(instance, module) {
         var exports2 = instance.exports;
-        Module3["asm"] = exports2;
-        wasmMemory = Module3["asm"]["memory"];
+        Module4["asm"] = exports2;
+        wasmMemory = Module4["asm"]["memory"];
         assert2(wasmMemory, "memory not found in wasm exports");
         updateGlobalBufferAndViews(wasmMemory.buffer);
-        wasmTable = Module3["asm"]["__indirect_function_table"];
+        wasmTable = Module4["asm"]["__indirect_function_table"];
         assert2(wasmTable, "table not found in wasm exports");
-        addOnInit(Module3["asm"]["__wasm_call_ctors"]);
+        addOnInit(Module4["asm"]["__wasm_call_ctors"]);
         removeRunDependency("wasm-instantiate");
       }
       addRunDependency("wasm-instantiate");
-      var trueModule = Module3;
+      var trueModule = Module4;
       function receiveInstantiationResult(result) {
-        assert2(Module3 === trueModule, "the Module object should not be replaced during async compilation - perhaps the order of HTML elements is wrong?");
+        assert2(Module4 === trueModule, "the Module object should not be replaced during async compilation - perhaps the order of HTML elements is wrong?");
         trueModule = null;
         receiveInstance(result["instance"]);
       }
@@ -20200,9 +19056,9 @@ var Module = (() => {
           return instantiateArrayBuffer(receiveInstantiationResult);
         }
       }
-      if (Module3["instantiateWasm"]) {
+      if (Module4["instantiateWasm"]) {
         try {
-          var exports = Module3["instantiateWasm"](info, receiveInstance);
+          var exports = Module4["instantiateWasm"](info, receiveInstance);
           return exports;
         } catch (e) {
           err("Module.instantiateWasm callback failed with error: " + e);
@@ -20222,7 +19078,7 @@ var Module = (() => {
     }
     function callRuntimeCallbacks(callbacks) {
       while (callbacks.length > 0) {
-        callbacks.shift()(Module3);
+        callbacks.shift()(Module4);
       }
     }
     function withStackSave(f) {
@@ -20232,31 +19088,8 @@ var Module = (() => {
       return ret;
     }
     function demangle(func) {
-      demangle.recursionGuard = (demangle.recursionGuard | 0) + 1;
-      if (demangle.recursionGuard > 1)
-        return func;
-      assert2(___cxa_demangle);
-      return withStackSave(function() {
-        try {
-          var s = func;
-          if (s.startsWith("__Z"))
-            s = s.substr(1);
-          var len = lengthBytesUTF8(s) + 1;
-          var buf = stackAlloc(len);
-          stringToUTF8(s, buf, len);
-          var status = stackAlloc(4);
-          var ret = ___cxa_demangle(buf, 0, 0, status);
-          if (HEAP32[status >> 2] === 0 && ret) {
-            return UTF8ToString(ret);
-          }
-        } catch (e) {
-        } finally {
-          _free(ret);
-          if (demangle.recursionGuard < 2)
-            --demangle.recursionGuard;
-        }
-        return func;
-      });
+      warnOnce("warning: build with -sDEMANGLE_SUPPORT to link in libcxxabi demangling");
+      return func;
     }
     function demangleAll(text) {
       var regex = /\b_Z[\w\d_]+/g;
@@ -20347,8 +19180,8 @@ var Module = (() => {
     }
     function stackTrace() {
       var js = jsStackTrace();
-      if (Module3["extraStackTrace"])
-        js += "\n" + Module3["extraStackTrace"]();
+      if (Module4["extraStackTrace"])
+        js += "\n" + Module4["extraStackTrace"]();
       return demangleAll(js);
     }
     function warnOnce(text) {
@@ -21703,7 +20536,7 @@ var Module = (() => {
       if (stream.stream_ops.open) {
         stream.stream_ops.open(stream);
       }
-      if (Module3["logReadFiles"] && !(flags & 1)) {
+      if (Module4["logReadFiles"] && !(flags & 1)) {
         if (!FS.readFiles)
           FS.readFiles = {};
         if (!(path in FS.readFiles)) {
@@ -21926,18 +20759,18 @@ var Module = (() => {
         }
       }, {}, "/proc/self/fd");
     }, createStandardStreams: () => {
-      if (Module3["stdin"]) {
-        FS.createDevice("/dev", "stdin", Module3["stdin"]);
+      if (Module4["stdin"]) {
+        FS.createDevice("/dev", "stdin", Module4["stdin"]);
       } else {
         FS.symlink("/dev/tty", "/dev/stdin");
       }
-      if (Module3["stdout"]) {
-        FS.createDevice("/dev", "stdout", null, Module3["stdout"]);
+      if (Module4["stdout"]) {
+        FS.createDevice("/dev", "stdout", null, Module4["stdout"]);
       } else {
         FS.symlink("/dev/tty", "/dev/stdout");
       }
-      if (Module3["stderr"]) {
-        FS.createDevice("/dev", "stderr", null, Module3["stderr"]);
+      if (Module4["stderr"]) {
+        FS.createDevice("/dev", "stderr", null, Module4["stderr"]);
       } else {
         FS.symlink("/dev/tty1", "/dev/stderr");
       }
@@ -21988,9 +20821,9 @@ var Module = (() => {
       assert2(!FS.init.initialized, "FS.init was previously called. If you want to initialize later with custom parameters, remove any earlier calls (note that one is automatically added to the generated code)");
       FS.init.initialized = true;
       FS.ensureErrnoError();
-      Module3["stdin"] = input || Module3["stdin"];
-      Module3["stdout"] = output || Module3["stdout"];
-      Module3["stderr"] = error || Module3["stderr"];
+      Module4["stdin"] = input || Module4["stdin"];
+      Module4["stdout"] = output || Module4["stdout"];
+      Module4["stderr"] = error || Module4["stderr"];
       FS.createStandardStreams();
     }, quit: () => {
       FS.init.initialized = false;
@@ -22637,9 +21470,6 @@ var Module = (() => {
     function _abort() {
       abort("native code called abort()");
     }
-    function _emscripten_date_now() {
-      return Date.now();
-    }
     function _emscripten_memcpy_big(dest, src, num) {
       HEAPU8.copyWithin(dest, src, src + num);
     }
@@ -22680,8 +21510,8 @@ var Module = (() => {
     function _proc_exit(code) {
       EXITSTATUS = code;
       if (!keepRuntimeAlive()) {
-        if (Module3["onExit"])
-          Module3["onExit"](code);
+        if (Module4["onExit"])
+          Module4["onExit"](code);
         ABORT = true;
       }
       quit_(code, new ExitStatus(code));
@@ -22783,7 +21613,7 @@ var Module = (() => {
       }
     }
     function getCFunc(ident) {
-      var func = Module3["_" + ident];
+      var func = Module4["_" + ident];
       assert2(func, "Cannot call unknown function " + ident + ", make sure it is exported");
       return func;
     }
@@ -22888,9 +21718,9 @@ var Module = (() => {
     });
     FS.FSNode = FSNode;
     FS.staticInit();
-    Module3["FS_createDataFile"] = FS.createDataFile;
-    Module3["FS_readFile"] = FS.readFile;
-    Module3["FS_unlink"] = FS.unlink;
+    Module4["FS_createDataFile"] = FS.createDataFile;
+    Module4["FS_readFile"] = FS.readFile;
+    Module4["FS_unlink"] = FS.unlink;
     ;
     ERRNO_CODES = {
       "EPERM": 63,
@@ -23027,7 +21857,6 @@ var Module = (() => {
       "__syscall_ioctl": ___syscall_ioctl,
       "__syscall_openat": ___syscall_openat,
       "abort": _abort,
-      "emscripten_date_now": _emscripten_date_now,
       "emscripten_memcpy_big": _emscripten_memcpy_big,
       "emscripten_resize_heap": _emscripten_resize_heap,
       "exit": _exit,
@@ -23037,34 +21866,35 @@ var Module = (() => {
       "fd_write": _fd_write
     };
     var asm = createWasm();
-    var ___wasm_call_ctors = Module3["___wasm_call_ctors"] = createExportWrapper("__wasm_call_ctors");
-    var _simplify = Module3["_simplify"] = createExportWrapper("simplify");
-    var ___errno_location = Module3["___errno_location"] = createExportWrapper("__errno_location");
-    var _fflush = Module3["_fflush"] = createExportWrapper("fflush");
-    var _free = Module3["_free"] = createExportWrapper("free");
-    var _malloc = Module3["_malloc"] = createExportWrapper("malloc");
-    var _emscripten_stack_init = Module3["_emscripten_stack_init"] = function() {
-      return (_emscripten_stack_init = Module3["_emscripten_stack_init"] = Module3["asm"]["emscripten_stack_init"]).apply(null, arguments);
+    var ___wasm_call_ctors = Module4["___wasm_call_ctors"] = createExportWrapper("__wasm_call_ctors");
+    var _simplify_obj = Module4["_simplify_obj"] = createExportWrapper("simplify_obj");
+    var _simplify = Module4["_simplify"] = createExportWrapper("simplify");
+    var _get_simplified_vertex_count = Module4["_get_simplified_vertex_count"] = createExportWrapper("get_simplified_vertex_count");
+    var _get_simplified_triangle_count = Module4["_get_simplified_triangle_count"] = createExportWrapper("get_simplified_triangle_count");
+    var ___errno_location = Module4["___errno_location"] = createExportWrapper("__errno_location");
+    var _fflush = Module4["_fflush"] = createExportWrapper("fflush");
+    var _malloc = Module4["_malloc"] = createExportWrapper("malloc");
+    var _emscripten_stack_init = Module4["_emscripten_stack_init"] = function() {
+      return (_emscripten_stack_init = Module4["_emscripten_stack_init"] = Module4["asm"]["emscripten_stack_init"]).apply(null, arguments);
     };
-    var _emscripten_stack_get_free = Module3["_emscripten_stack_get_free"] = function() {
-      return (_emscripten_stack_get_free = Module3["_emscripten_stack_get_free"] = Module3["asm"]["emscripten_stack_get_free"]).apply(null, arguments);
+    var _emscripten_stack_get_free = Module4["_emscripten_stack_get_free"] = function() {
+      return (_emscripten_stack_get_free = Module4["_emscripten_stack_get_free"] = Module4["asm"]["emscripten_stack_get_free"]).apply(null, arguments);
     };
-    var _emscripten_stack_get_base = Module3["_emscripten_stack_get_base"] = function() {
-      return (_emscripten_stack_get_base = Module3["_emscripten_stack_get_base"] = Module3["asm"]["emscripten_stack_get_base"]).apply(null, arguments);
+    var _emscripten_stack_get_base = Module4["_emscripten_stack_get_base"] = function() {
+      return (_emscripten_stack_get_base = Module4["_emscripten_stack_get_base"] = Module4["asm"]["emscripten_stack_get_base"]).apply(null, arguments);
     };
-    var _emscripten_stack_get_end = Module3["_emscripten_stack_get_end"] = function() {
-      return (_emscripten_stack_get_end = Module3["_emscripten_stack_get_end"] = Module3["asm"]["emscripten_stack_get_end"]).apply(null, arguments);
+    var _emscripten_stack_get_end = Module4["_emscripten_stack_get_end"] = function() {
+      return (_emscripten_stack_get_end = Module4["_emscripten_stack_get_end"] = Module4["asm"]["emscripten_stack_get_end"]).apply(null, arguments);
     };
-    var stackSave = Module3["stackSave"] = createExportWrapper("stackSave");
-    var stackRestore = Module3["stackRestore"] = createExportWrapper("stackRestore");
-    var stackAlloc = Module3["stackAlloc"] = createExportWrapper("stackAlloc");
-    var ___cxa_demangle = Module3["___cxa_demangle"] = createExportWrapper("__cxa_demangle");
-    var ___cxa_is_pointer_type = Module3["___cxa_is_pointer_type"] = createExportWrapper("__cxa_is_pointer_type");
-    var dynCall_jiji = Module3["dynCall_jiji"] = createExportWrapper("dynCall_jiji");
-    Module3["FS_createDataFile"] = FS.createDataFile;
-    Module3["FS_unlink"] = FS.unlink;
-    Module3["ccall"] = ccall;
-    Module3["cwrap"] = cwrap;
+    var stackSave = Module4["stackSave"] = createExportWrapper("stackSave");
+    var stackRestore = Module4["stackRestore"] = createExportWrapper("stackRestore");
+    var stackAlloc = Module4["stackAlloc"] = createExportWrapper("stackAlloc");
+    var ___cxa_is_pointer_type = Module4["___cxa_is_pointer_type"] = createExportWrapper("__cxa_is_pointer_type");
+    var dynCall_jiji = Module4["dynCall_jiji"] = createExportWrapper("dynCall_jiji");
+    Module4["FS_createDataFile"] = FS.createDataFile;
+    Module4["FS_unlink"] = FS.unlink;
+    Module4["ccall"] = ccall;
+    Module4["cwrap"] = cwrap;
     var unexportedRuntimeSymbols = [
       "run",
       "UTF8ArrayToString",
@@ -23469,21 +22299,21 @@ var Module = (() => {
         if (calledRun)
           return;
         calledRun = true;
-        Module3["calledRun"] = true;
+        Module4["calledRun"] = true;
         if (ABORT)
           return;
         initRuntime();
-        readyPromiseResolve(Module3);
-        if (Module3["onRuntimeInitialized"])
-          Module3["onRuntimeInitialized"]();
-        assert2(!Module3["_main"], 'compiled without a main, but one is present. if you added it from JS, use Module["onRuntimeInitialized"]');
+        readyPromiseResolve(Module4);
+        if (Module4["onRuntimeInitialized"])
+          Module4["onRuntimeInitialized"]();
+        assert2(!Module4["_main"], 'compiled without a main, but one is present. if you added it from JS, use Module["onRuntimeInitialized"]');
         postRun();
       }
-      if (Module3["setStatus"]) {
-        Module3["setStatus"]("Running...");
+      if (Module4["setStatus"]) {
+        Module4["setStatus"]("Running...");
         setTimeout(function() {
           setTimeout(function() {
-            Module3["setStatus"]("");
+            Module4["setStatus"]("");
           }, 1);
           doRun();
         }, 1);
@@ -23520,162 +22350,18 @@ var Module = (() => {
         warnOnce("stdio streams had content in them that was not flushed. you should set EXIT_RUNTIME to 1 (see the FAQ), or make sure to emit a newline when you printf etc.");
       }
     }
-    if (Module3["preInit"]) {
-      if (typeof Module3["preInit"] == "function")
-        Module3["preInit"] = [Module3["preInit"]];
-      while (Module3["preInit"].length > 0) {
-        Module3["preInit"].pop()();
+    if (Module4["preInit"]) {
+      if (typeof Module4["preInit"] == "function")
+        Module4["preInit"] = [Module4["preInit"]];
+      while (Module4["preInit"].length > 0) {
+        Module4["preInit"].pop()();
       }
     }
     run();
-    return Module3.ready;
+    return Module4.ready;
   };
 })();
 var qms_default = Module;
-
-// node_modules/three/examples/jsm/exporters/OBJExporter.js
-var OBJExporter = class {
-  parse(object) {
-    let output = "";
-    let indexVertex = 0;
-    let indexVertexUvs = 0;
-    let indexNormals = 0;
-    const vertex2 = new Vector3();
-    const color = new Color();
-    const normal = new Vector3();
-    const uv = new Vector2();
-    const face = [];
-    function parseMesh(mesh) {
-      let nbVertex = 0;
-      let nbNormals = 0;
-      let nbVertexUvs = 0;
-      const geometry = mesh.geometry;
-      const normalMatrixWorld = new Matrix3();
-      if (geometry.isBufferGeometry !== true) {
-        throw new Error("THREE.OBJExporter: Geometry is not of type THREE.BufferGeometry.");
-      }
-      const vertices = geometry.getAttribute("position");
-      const normals = geometry.getAttribute("normal");
-      const uvs = geometry.getAttribute("uv");
-      const indices = geometry.getIndex();
-      output += "o " + mesh.name + "\n";
-      if (mesh.material && mesh.material.name) {
-        output += "usemtl " + mesh.material.name + "\n";
-      }
-      if (vertices !== void 0) {
-        for (let i = 0, l = vertices.count; i < l; i++, nbVertex++) {
-          vertex2.fromBufferAttribute(vertices, i);
-          vertex2.applyMatrix4(mesh.matrixWorld);
-          output += "v " + vertex2.x + " " + vertex2.y + " " + vertex2.z + "\n";
-        }
-      }
-      if (uvs !== void 0) {
-        for (let i = 0, l = uvs.count; i < l; i++, nbVertexUvs++) {
-          uv.fromBufferAttribute(uvs, i);
-          output += "vt " + uv.x + " " + uv.y + "\n";
-        }
-      }
-      if (normals !== void 0) {
-        normalMatrixWorld.getNormalMatrix(mesh.matrixWorld);
-        for (let i = 0, l = normals.count; i < l; i++, nbNormals++) {
-          normal.fromBufferAttribute(normals, i);
-          normal.applyMatrix3(normalMatrixWorld).normalize();
-          output += "vn " + normal.x + " " + normal.y + " " + normal.z + "\n";
-        }
-      }
-      if (indices !== null) {
-        for (let i = 0, l = indices.count; i < l; i += 3) {
-          for (let m = 0; m < 3; m++) {
-            const j = indices.getX(i + m) + 1;
-            face[m] = indexVertex + j + (normals || uvs ? "/" + (uvs ? indexVertexUvs + j : "") + (normals ? "/" + (indexNormals + j) : "") : "");
-          }
-          output += "f " + face.join(" ") + "\n";
-        }
-      } else {
-        for (let i = 0, l = vertices.count; i < l; i += 3) {
-          for (let m = 0; m < 3; m++) {
-            const j = i + m + 1;
-            face[m] = indexVertex + j + (normals || uvs ? "/" + (uvs ? indexVertexUvs + j : "") + (normals ? "/" + (indexNormals + j) : "") : "");
-          }
-          output += "f " + face.join(" ") + "\n";
-        }
-      }
-      indexVertex += nbVertex;
-      indexVertexUvs += nbVertexUvs;
-      indexNormals += nbNormals;
-    }
-    function parseLine(line) {
-      let nbVertex = 0;
-      const geometry = line.geometry;
-      const type = line.type;
-      if (geometry.isBufferGeometry !== true) {
-        throw new Error("THREE.OBJExporter: Geometry is not of type THREE.BufferGeometry.");
-      }
-      const vertices = geometry.getAttribute("position");
-      output += "o " + line.name + "\n";
-      if (vertices !== void 0) {
-        for (let i = 0, l = vertices.count; i < l; i++, nbVertex++) {
-          vertex2.fromBufferAttribute(vertices, i);
-          vertex2.applyMatrix4(line.matrixWorld);
-          output += "v " + vertex2.x + " " + vertex2.y + " " + vertex2.z + "\n";
-        }
-      }
-      if (type === "Line") {
-        output += "l ";
-        for (let j = 1, l = vertices.count; j <= l; j++) {
-          output += indexVertex + j + " ";
-        }
-        output += "\n";
-      }
-      if (type === "LineSegments") {
-        for (let j = 1, k = j + 1, l = vertices.count; j < l; j += 2, k = j + 1) {
-          output += "l " + (indexVertex + j) + " " + (indexVertex + k) + "\n";
-        }
-      }
-      indexVertex += nbVertex;
-    }
-    function parsePoints(points) {
-      let nbVertex = 0;
-      const geometry = points.geometry;
-      if (geometry.isBufferGeometry !== true) {
-        throw new Error("THREE.OBJExporter: Geometry is not of type THREE.BufferGeometry.");
-      }
-      const vertices = geometry.getAttribute("position");
-      const colors = geometry.getAttribute("color");
-      output += "o " + points.name + "\n";
-      if (vertices !== void 0) {
-        for (let i = 0, l = vertices.count; i < l; i++, nbVertex++) {
-          vertex2.fromBufferAttribute(vertices, i);
-          vertex2.applyMatrix4(points.matrixWorld);
-          output += "v " + vertex2.x + " " + vertex2.y + " " + vertex2.z;
-          if (colors !== void 0) {
-            color.fromBufferAttribute(colors, i).convertLinearToSRGB();
-            output += " " + color.r + " " + color.g + " " + color.b;
-          }
-          output += "\n";
-        }
-        output += "p ";
-        for (let j = 1, l = vertices.count; j <= l; j++) {
-          output += indexVertex + j + " ";
-        }
-        output += "\n";
-      }
-      indexVertex += nbVertex;
-    }
-    object.traverse(function(child) {
-      if (child.isMesh === true) {
-        parseMesh(child);
-      }
-      if (child.isLine === true) {
-        parseLine(child);
-      }
-      if (child.isPoints === true) {
-        parsePoints(child);
-      }
-    });
-    return output;
-  }
-};
 
 // src/SimplifyModifierV4.ts
 var SimplifyModifierV4 = class {
@@ -23684,29 +22370,159 @@ var SimplifyModifierV4 = class {
       SimplifyModifierV4.SimplifyModifier = await qms_default();
     }
   }
-  static async simplify(obj, percentage) {
+  static async simplify(meshlet, percentage) {
     await SimplifyModifierV4.load();
-    try {
-      this.SimplifyModifier.FS_unlink("test.obj");
-    } catch (error) {
-    }
-    const exporter = new OBJExporter();
-    const objString = exporter.parse(obj);
-    const enc = new TextEncoder();
-    const data = enc.encode(objString);
-    this.SimplifyModifier.FS_createDataFile(".", "test.obj", data, true, true);
-    this.SimplifyModifier.ccall(
+    const simplify = this.SimplifyModifier.cwrap(
       "simplify",
-      void 0,
-      ["string", "number", "string"],
-      ["test.obj", percentage, "simplify_test.obj"]
+      "number",
+      [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ]
     );
-    let out_bin = this.SimplifyModifier.FS_readFile("simplify_test.obj");
-    let file = new Blob([out_bin], { type: "application/sla" });
-    const outputObjString = await file.text();
-    const objLoader = new OBJLoader();
-    const outputObj2 = objLoader.parse(outputObjString).children[0];
-    return outputObj2;
+    const simplified_vertex_count_fn = this.SimplifyModifier.cwrap(
+      "get_simplified_vertex_count",
+      "number",
+      []
+    );
+    const simplified_triangle_count_fn = this.SimplifyModifier.cwrap(
+      "get_simplified_triangle_count",
+      "number",
+      []
+    );
+    const reduceFraction = percentage;
+    const aggressiveness = 7;
+    const m = this.SimplifyModifier;
+    const TYPES = {
+      i8: { array: Int8Array, heap: "HEAP8" },
+      i16: { array: Int16Array, heap: "HEAP16" },
+      i32: { array: Int32Array, heap: "HEAP32" },
+      f32: { array: Float32Array, heap: "HEAPF32" },
+      f64: { array: Float64Array, heap: "HEAPF64" },
+      u8: { array: Uint8Array, heap: "HEAPU8" },
+      u16: { array: Uint16Array, heap: "HEAPU16" },
+      u32: { array: Uint32Array, heap: "HEAPU32" }
+    };
+    function transferNumberArrayToHeap(array, type) {
+      const typedArray = type.array.from(array);
+      const heapPointer = m._malloc(
+        typedArray.length * typedArray.BYTES_PER_ELEMENT
+      );
+      m[type.heap].set(typedArray, heapPointer >> 2);
+      return heapPointer;
+    }
+    function getDataFromHeap(address, type, length) {
+      return m[type.heap].slice(address >> 2, (address >> 2) + length);
+    }
+    const verticesPtr = transferNumberArrayToHeap(Float32Array.from(meshlet.vertices), TYPES.f32);
+    const indicesPtr = transferNumberArrayToHeap(Uint32Array.from(meshlet.indices), TYPES.u32);
+    const vertices_output = new Float32Array(meshlet.vertices.length);
+    const vertices_output_ptr = transferNumberArrayToHeap(vertices_output, TYPES.f32);
+    const triangles_output = new Uint32Array(meshlet.indices.length);
+    const triangles_output_ptr = transferNumberArrayToHeap(triangles_output, TYPES.u32);
+    simplify(verticesPtr, meshlet.vertices.length, indicesPtr, meshlet.indices.length, reduceFraction, aggressiveness, vertices_output_ptr, triangles_output_ptr);
+    const simplified_vertex_count = simplified_vertex_count_fn() * 3;
+    const simplified_triangle_count = simplified_triangle_count_fn() * 3;
+    const vertices_output_result = getDataFromHeap(vertices_output_ptr, TYPES.f32, simplified_vertex_count);
+    const triangles_output_result = getDataFromHeap(triangles_output_ptr, TYPES.u32, simplified_triangle_count);
+    return {
+      vertices: Array.from(vertices_output_result),
+      vertex_count: vertices_output_result.length / 3,
+      indices: Array.from(triangles_output_result),
+      index_count: triangles_output_result.length
+    };
+  }
+};
+
+// src/MeshletGrouper.ts
+var MeshletGrouper = class {
+  constructor() {
+    this.indexed_by_vertex_id = /* @__PURE__ */ new Map();
+  }
+  static rand(co) {
+    function fract(n) {
+      return n % 1;
+    }
+    function dot(v1, v2) {
+      return v1[0] * v2[0] + v1[1] * v2[1];
+    }
+    return fract(Math.sin(dot(co, [12.9898, 78.233])) * 43758.5453);
+  }
+  static getVertexKey(x, y, z) {
+    return `${x},${y},${z}`;
+  }
+  addMeshlet(meshlet) {
+    for (let i = 0; i < meshlet.vertices.length; i += 3) {
+      const vertex_id = MeshletGrouper.getVertexKey(meshlet.vertices[i + 0], meshlet.vertices[i + 1], meshlet.vertices[i + 2]);
+      let index_array = this.indexed_by_vertex_id.get(vertex_id);
+      if (!index_array) {
+        index_array = [];
+      }
+      if (index_array.indexOf(meshlet) === -1) {
+        index_array.push(meshlet);
+        this.indexed_by_vertex_id.set(vertex_id, index_array);
+      }
+    }
+  }
+  getSharedVertices(meshlet) {
+    let borderVertexIds = [];
+    for (let i = 0; i < meshlet.vertices.length; i += 3) {
+      const vertex_id = MeshletGrouper.getVertexKey(meshlet.vertices[i + 0], meshlet.vertices[i + 1], meshlet.vertices[i + 2]);
+      const adjacentMeshlets = this.indexed_by_vertex_id.get(vertex_id);
+      if (adjacentMeshlets && adjacentMeshlets.length > 1) {
+        borderVertexIds.push(i);
+      }
+    }
+    return borderVertexIds;
+  }
+  getAdjacentMeshlets(meshlet) {
+    let adjacentMeshlets = [];
+    const borderVertexIds = this.getSharedVertices(meshlet);
+    for (let i = 0; i < borderVertexIds.length; i++) {
+      const vertex_id = borderVertexIds[i];
+      const vertex_key = MeshletGrouper.getVertexKey(meshlet.vertices[vertex_id + 0], meshlet.vertices[vertex_id + 1], meshlet.vertices[vertex_id + 2]);
+      const vertexAdjacentMeshlets = this.indexed_by_vertex_id.get(vertex_key);
+      if (vertexAdjacentMeshlets && vertexAdjacentMeshlets.length > 1) {
+        for (let j = 0; j < vertexAdjacentMeshlets.length; j++) {
+          const adjacentMeshlet = vertexAdjacentMeshlets[j];
+          if (adjacentMeshlet === meshlet)
+            continue;
+          if (adjacentMeshlets.indexOf(adjacentMeshlet) !== -1)
+            continue;
+          adjacentMeshlets.push(adjacentMeshlet);
+        }
+      }
+    }
+    return adjacentMeshlets;
+  }
+  buildAdjacentMeshletList(meshlets) {
+    let adjacencyList = /* @__PURE__ */ new Map();
+    for (let meshletId = 0; meshletId < meshlets.length; meshletId++) {
+      const meshlet = meshlets[meshletId];
+      const adjacentMeshlets = this.getAdjacentMeshlets(meshlet);
+      let adjacencyArray = adjacencyList.get(meshletId);
+      if (!adjacencyArray)
+        adjacencyArray = [];
+      for (let j = 0; j < adjacentMeshlets.length; j++) {
+        const adjacentMeshlet = adjacentMeshlets[j];
+        const adjacentMeshletId = meshlets.indexOf(adjacentMeshlet);
+        if (adjacentMeshletId === -1)
+          throw Error("Could not find adjacentMeshletId in meshlets, shouldn't happen");
+        if (meshletId === adjacentMeshletId)
+          continue;
+        if (adjacencyArray.indexOf(adjacentMeshletId) !== -1)
+          continue;
+        adjacencyArray.push(adjacentMeshletId);
+      }
+      adjacencyList.set(meshletId, adjacencyArray);
+    }
+    return adjacencyList;
   }
 };
 
@@ -23777,224 +22593,6 @@ var OBJLoaderIndexed = class {
     };
   }
 };
-
-// node_modules/three/examples/jsm/utils/BufferGeometryUtils.js
-function mergeBufferGeometries(geometries, useGroups = false) {
-  const isIndexed = geometries[0].index !== null;
-  const attributesUsed = new Set(Object.keys(geometries[0].attributes));
-  const morphAttributesUsed = new Set(Object.keys(geometries[0].morphAttributes));
-  const attributes = {};
-  const morphAttributes = {};
-  const morphTargetsRelative = geometries[0].morphTargetsRelative;
-  const mergedGeometry = new BufferGeometry();
-  let offset = 0;
-  for (let i = 0; i < geometries.length; ++i) {
-    const geometry = geometries[i];
-    let attributesCount = 0;
-    if (isIndexed !== (geometry.index !== null)) {
-      console.error("THREE.BufferGeometryUtils: .mergeBufferGeometries() failed with geometry at index " + i + ". All geometries must have compatible attributes; make sure index attribute exists among all geometries, or in none of them.");
-      return null;
-    }
-    for (const name in geometry.attributes) {
-      if (!attributesUsed.has(name)) {
-        console.error("THREE.BufferGeometryUtils: .mergeBufferGeometries() failed with geometry at index " + i + '. All geometries must have compatible attributes; make sure "' + name + '" attribute exists among all geometries, or in none of them.');
-        return null;
-      }
-      if (attributes[name] === void 0)
-        attributes[name] = [];
-      attributes[name].push(geometry.attributes[name]);
-      attributesCount++;
-    }
-    if (attributesCount !== attributesUsed.size) {
-      console.error("THREE.BufferGeometryUtils: .mergeBufferGeometries() failed with geometry at index " + i + ". Make sure all geometries have the same number of attributes.");
-      return null;
-    }
-    if (morphTargetsRelative !== geometry.morphTargetsRelative) {
-      console.error("THREE.BufferGeometryUtils: .mergeBufferGeometries() failed with geometry at index " + i + ". .morphTargetsRelative must be consistent throughout all geometries.");
-      return null;
-    }
-    for (const name in geometry.morphAttributes) {
-      if (!morphAttributesUsed.has(name)) {
-        console.error("THREE.BufferGeometryUtils: .mergeBufferGeometries() failed with geometry at index " + i + ".  .morphAttributes must be consistent throughout all geometries.");
-        return null;
-      }
-      if (morphAttributes[name] === void 0)
-        morphAttributes[name] = [];
-      morphAttributes[name].push(geometry.morphAttributes[name]);
-    }
-    mergedGeometry.userData.mergedUserData = mergedGeometry.userData.mergedUserData || [];
-    mergedGeometry.userData.mergedUserData.push(geometry.userData);
-    if (useGroups) {
-      let count;
-      if (isIndexed) {
-        count = geometry.index.count;
-      } else if (geometry.attributes.position !== void 0) {
-        count = geometry.attributes.position.count;
-      } else {
-        console.error("THREE.BufferGeometryUtils: .mergeBufferGeometries() failed with geometry at index " + i + ". The geometry must have either an index or a position attribute");
-        return null;
-      }
-      mergedGeometry.addGroup(offset, count, i);
-      offset += count;
-    }
-  }
-  if (isIndexed) {
-    let indexOffset = 0;
-    const mergedIndex = [];
-    for (let i = 0; i < geometries.length; ++i) {
-      const index = geometries[i].index;
-      for (let j = 0; j < index.count; ++j) {
-        mergedIndex.push(index.getX(j) + indexOffset);
-      }
-      indexOffset += geometries[i].attributes.position.count;
-    }
-    mergedGeometry.setIndex(mergedIndex);
-  }
-  for (const name in attributes) {
-    const mergedAttribute = mergeBufferAttributes(attributes[name]);
-    if (!mergedAttribute) {
-      console.error("THREE.BufferGeometryUtils: .mergeBufferGeometries() failed while trying to merge the " + name + " attribute.");
-      return null;
-    }
-    mergedGeometry.setAttribute(name, mergedAttribute);
-  }
-  for (const name in morphAttributes) {
-    const numMorphTargets = morphAttributes[name][0].length;
-    if (numMorphTargets === 0)
-      break;
-    mergedGeometry.morphAttributes = mergedGeometry.morphAttributes || {};
-    mergedGeometry.morphAttributes[name] = [];
-    for (let i = 0; i < numMorphTargets; ++i) {
-      const morphAttributesToMerge = [];
-      for (let j = 0; j < morphAttributes[name].length; ++j) {
-        morphAttributesToMerge.push(morphAttributes[name][j][i]);
-      }
-      const mergedMorphAttribute = mergeBufferAttributes(morphAttributesToMerge);
-      if (!mergedMorphAttribute) {
-        console.error("THREE.BufferGeometryUtils: .mergeBufferGeometries() failed while trying to merge the " + name + " morphAttribute.");
-        return null;
-      }
-      mergedGeometry.morphAttributes[name].push(mergedMorphAttribute);
-    }
-  }
-  return mergedGeometry;
-}
-function mergeBufferAttributes(attributes) {
-  let TypedArray;
-  let itemSize;
-  let normalized;
-  let arrayLength = 0;
-  for (let i = 0; i < attributes.length; ++i) {
-    const attribute = attributes[i];
-    if (attribute.isInterleavedBufferAttribute) {
-      console.error("THREE.BufferGeometryUtils: .mergeBufferAttributes() failed. InterleavedBufferAttributes are not supported.");
-      return null;
-    }
-    if (TypedArray === void 0)
-      TypedArray = attribute.array.constructor;
-    if (TypedArray !== attribute.array.constructor) {
-      console.error("THREE.BufferGeometryUtils: .mergeBufferAttributes() failed. BufferAttribute.array must be of consistent array types across matching attributes.");
-      return null;
-    }
-    if (itemSize === void 0)
-      itemSize = attribute.itemSize;
-    if (itemSize !== attribute.itemSize) {
-      console.error("THREE.BufferGeometryUtils: .mergeBufferAttributes() failed. BufferAttribute.itemSize must be consistent across matching attributes.");
-      return null;
-    }
-    if (normalized === void 0)
-      normalized = attribute.normalized;
-    if (normalized !== attribute.normalized) {
-      console.error("THREE.BufferGeometryUtils: .mergeBufferAttributes() failed. BufferAttribute.normalized must be consistent across matching attributes.");
-      return null;
-    }
-    arrayLength += attribute.array.length;
-  }
-  const array = new TypedArray(arrayLength);
-  let offset = 0;
-  for (let i = 0; i < attributes.length; ++i) {
-    array.set(attributes[i].array, offset);
-    offset += attributes[i].array.length;
-  }
-  return new BufferAttribute(array, itemSize, normalized);
-}
-function mergeVertices(geometry, tolerance = 1e-4) {
-  tolerance = Math.max(tolerance, Number.EPSILON);
-  const hashToIndex = {};
-  const indices = geometry.getIndex();
-  const positions = geometry.getAttribute("position");
-  const vertexCount = indices ? indices.count : positions.count;
-  let nextIndex = 0;
-  const attributeNames = Object.keys(geometry.attributes);
-  const attrArrays = {};
-  const morphAttrsArrays = {};
-  const newIndices = [];
-  const getters = ["getX", "getY", "getZ", "getW"];
-  for (let i = 0, l = attributeNames.length; i < l; i++) {
-    const name = attributeNames[i];
-    attrArrays[name] = [];
-    const morphAttr = geometry.morphAttributes[name];
-    if (morphAttr) {
-      morphAttrsArrays[name] = new Array(morphAttr.length).fill().map(() => []);
-    }
-  }
-  const decimalShift = Math.log10(1 / tolerance);
-  const shiftMultiplier = Math.pow(10, decimalShift);
-  for (let i = 0; i < vertexCount; i++) {
-    const index = indices ? indices.getX(i) : i;
-    let hash = "";
-    for (let j = 0, l = attributeNames.length; j < l; j++) {
-      const name = attributeNames[j];
-      const attribute = geometry.getAttribute(name);
-      const itemSize = attribute.itemSize;
-      for (let k = 0; k < itemSize; k++) {
-        hash += `${~~(attribute[getters[k]](index) * shiftMultiplier)},`;
-      }
-    }
-    if (hash in hashToIndex) {
-      newIndices.push(hashToIndex[hash]);
-    } else {
-      for (let j = 0, l = attributeNames.length; j < l; j++) {
-        const name = attributeNames[j];
-        const attribute = geometry.getAttribute(name);
-        const morphAttr = geometry.morphAttributes[name];
-        const itemSize = attribute.itemSize;
-        const newarray = attrArrays[name];
-        const newMorphArrays = morphAttrsArrays[name];
-        for (let k = 0; k < itemSize; k++) {
-          const getterFunc = getters[k];
-          newarray.push(attribute[getterFunc](index));
-          if (morphAttr) {
-            for (let m = 0, ml = morphAttr.length; m < ml; m++) {
-              newMorphArrays[m].push(morphAttr[m][getterFunc](index));
-            }
-          }
-        }
-      }
-      hashToIndex[hash] = nextIndex;
-      newIndices.push(nextIndex);
-      nextIndex++;
-    }
-  }
-  const result = geometry.clone();
-  for (let i = 0, l = attributeNames.length; i < l; i++) {
-    const name = attributeNames[i];
-    const oldAttribute = geometry.getAttribute(name);
-    const buffer = new oldAttribute.array.constructor(attrArrays[name]);
-    const attribute = new BufferAttribute(buffer, oldAttribute.itemSize, oldAttribute.normalized);
-    result.setAttribute(name, attribute);
-    if (name in morphAttrsArrays) {
-      for (let j = 0; j < morphAttrsArrays[name].length; j++) {
-        const oldMorphAttribute = geometry.morphAttributes[name][j];
-        const buffer2 = new oldMorphAttribute.array.constructor(morphAttrsArrays[name][j]);
-        const morphAttribute = new BufferAttribute(buffer2, oldMorphAttribute.itemSize, oldMorphAttribute.normalized);
-        result.morphAttributes[name][j] = morphAttribute;
-      }
-    }
-  }
-  result.setIndex(newIndices);
-  return result;
-}
 
 // src/utils/MeshletBuilder.ts
 function assert(value) {
@@ -24379,20 +22977,20 @@ MeshletBuilder.kMeshletMaxTriangles = 512;
 // src/utils/meshoptimizer_clusterize.js
 var Module2 = (() => {
   var _scriptDir = import.meta.url;
-  return function(Module3) {
-    Module3 = Module3 || {};
-    var Module3 = typeof Module3 != "undefined" ? Module3 : {};
+  return function(Module4) {
+    Module4 = Module4 || {};
+    var Module4 = typeof Module4 != "undefined" ? Module4 : {};
     var readyPromiseResolve, readyPromiseReject;
-    Module3["ready"] = new Promise(function(resolve, reject) {
+    Module4["ready"] = new Promise(function(resolve, reject) {
       readyPromiseResolve = resolve;
       readyPromiseReject = reject;
     });
     ["_malloc", "_meshopt_buildMeshletsBound", "_meshopt_buildMeshlets", "_meshopt_buildMeshletsScan", "_fflush", "onRuntimeInitialized"].forEach((prop) => {
-      if (!Object.getOwnPropertyDescriptor(Module3["ready"], prop)) {
-        Object.defineProperty(Module3["ready"], prop, { get: () => abort("You are getting " + prop + " on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js"), set: () => abort("You are setting " + prop + " on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js") });
+      if (!Object.getOwnPropertyDescriptor(Module4["ready"], prop)) {
+        Object.defineProperty(Module4["ready"], prop, { get: () => abort("You are getting " + prop + " on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js"), set: () => abort("You are setting " + prop + " on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js") });
       }
     });
-    var moduleOverrides = Object.assign({}, Module3);
+    var moduleOverrides = Object.assign({}, Module4);
     var arguments_ = [];
     var thisProgram = "./this.program";
     var quit_ = (status, toThrow) => {
@@ -24402,13 +23000,13 @@ var Module2 = (() => {
     var ENVIRONMENT_IS_WORKER = false;
     var ENVIRONMENT_IS_NODE = false;
     var ENVIRONMENT_IS_SHELL = false;
-    if (Module3["ENVIRONMENT"]) {
+    if (Module4["ENVIRONMENT"]) {
       throw new Error("Module.ENVIRONMENT has been deprecated. To force the environment, use the ENVIRONMENT compile-time option (for example, -sENVIRONMENT=web or -sENVIRONMENT=node)");
     }
     var scriptDirectory = "";
     function locateFile(path) {
-      if (Module3["locateFile"]) {
-        return Module3["locateFile"](path, scriptDirectory);
+      if (Module4["locateFile"]) {
+        return Module4["locateFile"](path, scriptDirectory);
       }
       return scriptDirectory + path;
     }
@@ -24510,29 +23108,29 @@ var Module2 = (() => {
     } else {
       throw new Error("environment detection error");
     }
-    var out = Module3["print"] || console.log.bind(console);
-    var err = Module3["printErr"] || console.warn.bind(console);
-    Object.assign(Module3, moduleOverrides);
+    var out = Module4["print"] || console.log.bind(console);
+    var err = Module4["printErr"] || console.warn.bind(console);
+    Object.assign(Module4, moduleOverrides);
     moduleOverrides = null;
     checkIncomingModuleAPI();
-    if (Module3["arguments"])
-      arguments_ = Module3["arguments"];
+    if (Module4["arguments"])
+      arguments_ = Module4["arguments"];
     legacyModuleProp("arguments", "arguments_");
-    if (Module3["thisProgram"])
-      thisProgram = Module3["thisProgram"];
+    if (Module4["thisProgram"])
+      thisProgram = Module4["thisProgram"];
     legacyModuleProp("thisProgram", "thisProgram");
-    if (Module3["quit"])
-      quit_ = Module3["quit"];
+    if (Module4["quit"])
+      quit_ = Module4["quit"];
     legacyModuleProp("quit", "quit_");
-    assert2(typeof Module3["memoryInitializerPrefixURL"] == "undefined", "Module.memoryInitializerPrefixURL option was removed, use Module.locateFile instead");
-    assert2(typeof Module3["pthreadMainPrefixURL"] == "undefined", "Module.pthreadMainPrefixURL option was removed, use Module.locateFile instead");
-    assert2(typeof Module3["cdInitializerPrefixURL"] == "undefined", "Module.cdInitializerPrefixURL option was removed, use Module.locateFile instead");
-    assert2(typeof Module3["filePackagePrefixURL"] == "undefined", "Module.filePackagePrefixURL option was removed, use Module.locateFile instead");
-    assert2(typeof Module3["read"] == "undefined", "Module.read option was removed (modify read_ in JS)");
-    assert2(typeof Module3["readAsync"] == "undefined", "Module.readAsync option was removed (modify readAsync in JS)");
-    assert2(typeof Module3["readBinary"] == "undefined", "Module.readBinary option was removed (modify readBinary in JS)");
-    assert2(typeof Module3["setWindowTitle"] == "undefined", "Module.setWindowTitle option was removed (modify setWindowTitle in JS)");
-    assert2(typeof Module3["TOTAL_MEMORY"] == "undefined", "Module.TOTAL_MEMORY has been renamed Module.INITIAL_MEMORY");
+    assert2(typeof Module4["memoryInitializerPrefixURL"] == "undefined", "Module.memoryInitializerPrefixURL option was removed, use Module.locateFile instead");
+    assert2(typeof Module4["pthreadMainPrefixURL"] == "undefined", "Module.pthreadMainPrefixURL option was removed, use Module.locateFile instead");
+    assert2(typeof Module4["cdInitializerPrefixURL"] == "undefined", "Module.cdInitializerPrefixURL option was removed, use Module.locateFile instead");
+    assert2(typeof Module4["filePackagePrefixURL"] == "undefined", "Module.filePackagePrefixURL option was removed, use Module.locateFile instead");
+    assert2(typeof Module4["read"] == "undefined", "Module.read option was removed (modify read_ in JS)");
+    assert2(typeof Module4["readAsync"] == "undefined", "Module.readAsync option was removed (modify readAsync in JS)");
+    assert2(typeof Module4["readBinary"] == "undefined", "Module.readBinary option was removed (modify readBinary in JS)");
+    assert2(typeof Module4["setWindowTitle"] == "undefined", "Module.setWindowTitle option was removed (modify setWindowTitle in JS)");
+    assert2(typeof Module4["TOTAL_MEMORY"] == "undefined", "Module.TOTAL_MEMORY has been renamed Module.INITIAL_MEMORY");
     legacyModuleProp("read", "read_");
     legacyModuleProp("readAsync", "readAsync");
     legacyModuleProp("readBinary", "readBinary");
@@ -24542,14 +23140,14 @@ var Module2 = (() => {
     assert2(!ENVIRONMENT_IS_SHELL, "shell environment detected but not enabled at build time.  Add 'shell' to `-sENVIRONMENT` to enable.");
     var POINTER_SIZE = 4;
     function legacyModuleProp(prop, newName) {
-      if (!Object.getOwnPropertyDescriptor(Module3, prop)) {
-        Object.defineProperty(Module3, prop, { configurable: true, get: function() {
+      if (!Object.getOwnPropertyDescriptor(Module4, prop)) {
+        Object.defineProperty(Module4, prop, { configurable: true, get: function() {
           abort("Module." + prop + " has been replaced with plain " + newName + " (the initial value can be provided on Module, but after startup the value is only looked for on a local variable of that name)");
         } });
       }
     }
     function ignoredModuleProp(prop) {
-      if (Object.getOwnPropertyDescriptor(Module3, prop)) {
+      if (Object.getOwnPropertyDescriptor(Module4, prop)) {
         abort("`Module." + prop + "` was supplied but `" + prop + "` not included in INCOMING_MODULE_JS_API");
       }
     }
@@ -24569,8 +23167,8 @@ var Module2 = (() => {
       }
     }
     function unexportedRuntimeSymbol(sym) {
-      if (!Object.getOwnPropertyDescriptor(Module3, sym)) {
-        Object.defineProperty(Module3, sym, { configurable: true, get: function() {
+      if (!Object.getOwnPropertyDescriptor(Module4, sym)) {
+        Object.defineProperty(Module4, sym, { configurable: true, get: function() {
           var msg = "'" + sym + "' was not exported. add it to EXPORTED_RUNTIME_METHODS (see the FAQ)";
           if (isExportedByForceFilesystem(sym)) {
             msg += ". Alternatively, forcing filesystem support (-sFORCE_FILESYSTEM) can export this for you";
@@ -24580,10 +23178,10 @@ var Module2 = (() => {
       }
     }
     var wasmBinary;
-    if (Module3["wasmBinary"])
-      wasmBinary = Module3["wasmBinary"];
+    if (Module4["wasmBinary"])
+      wasmBinary = Module4["wasmBinary"];
     legacyModuleProp("wasmBinary", "wasmBinary");
-    var noExitRuntime = Module3["noExitRuntime"] || true;
+    var noExitRuntime = Module4["noExitRuntime"] || true;
     legacyModuleProp("noExitRuntime", "noExitRuntime");
     if (typeof WebAssembly != "object") {
       abort("no native wasm support detected");
@@ -24684,23 +23282,23 @@ var Module2 = (() => {
     var buffer, HEAP8, HEAPU8, HEAP16, HEAPU16, HEAP32, HEAPU32, HEAPF32, HEAPF64;
     function updateGlobalBufferAndViews(buf) {
       buffer = buf;
-      Module3["HEAP8"] = HEAP8 = new Int8Array(buf);
-      Module3["HEAP16"] = HEAP16 = new Int16Array(buf);
-      Module3["HEAP32"] = HEAP32 = new Int32Array(buf);
-      Module3["HEAPU8"] = HEAPU8 = new Uint8Array(buf);
-      Module3["HEAPU16"] = HEAPU16 = new Uint16Array(buf);
-      Module3["HEAPU32"] = HEAPU32 = new Uint32Array(buf);
-      Module3["HEAPF32"] = HEAPF32 = new Float32Array(buf);
-      Module3["HEAPF64"] = HEAPF64 = new Float64Array(buf);
+      Module4["HEAP8"] = HEAP8 = new Int8Array(buf);
+      Module4["HEAP16"] = HEAP16 = new Int16Array(buf);
+      Module4["HEAP32"] = HEAP32 = new Int32Array(buf);
+      Module4["HEAPU8"] = HEAPU8 = new Uint8Array(buf);
+      Module4["HEAPU16"] = HEAPU16 = new Uint16Array(buf);
+      Module4["HEAPU32"] = HEAPU32 = new Uint32Array(buf);
+      Module4["HEAPF32"] = HEAPF32 = new Float32Array(buf);
+      Module4["HEAPF64"] = HEAPF64 = new Float64Array(buf);
     }
     var TOTAL_STACK = 5242880;
-    if (Module3["TOTAL_STACK"])
-      assert2(TOTAL_STACK === Module3["TOTAL_STACK"], "the stack size can no longer be determined at runtime");
-    var INITIAL_MEMORY = Module3["INITIAL_MEMORY"] || 16777216;
+    if (Module4["TOTAL_STACK"])
+      assert2(TOTAL_STACK === Module4["TOTAL_STACK"], "the stack size can no longer be determined at runtime");
+    var INITIAL_MEMORY = Module4["INITIAL_MEMORY"] || 16777216;
     legacyModuleProp("INITIAL_MEMORY", "INITIAL_MEMORY");
     assert2(INITIAL_MEMORY >= TOTAL_STACK, "INITIAL_MEMORY should be larger than TOTAL_STACK, was " + INITIAL_MEMORY + "! (TOTAL_STACK=" + TOTAL_STACK + ")");
     assert2(typeof Int32Array != "undefined" && typeof Float64Array !== "undefined" && Int32Array.prototype.subarray != void 0 && Int32Array.prototype.set != void 0, "JS engine does not provide full typed array support");
-    assert2(!Module3["wasmMemory"], "Use of `wasmMemory` detected.  Use -sIMPORTED_MEMORY to define wasmMemory externally");
+    assert2(!Module4["wasmMemory"], "Use of `wasmMemory` detected.  Use -sIMPORTED_MEMORY to define wasmMemory externally");
     assert2(INITIAL_MEMORY == 16777216, "Detected runtime INITIAL_MEMORY setting.  Use -sIMPORTED_MEMORY to define wasmMemory dynamically");
     var wasmTable;
     function writeStackCookie() {
@@ -24734,11 +23332,11 @@ var Module2 = (() => {
     var __ATPOSTRUN__ = [];
     var runtimeInitialized = false;
     function preRun() {
-      if (Module3["preRun"]) {
-        if (typeof Module3["preRun"] == "function")
-          Module3["preRun"] = [Module3["preRun"]];
-        while (Module3["preRun"].length) {
-          addOnPreRun(Module3["preRun"].shift());
+      if (Module4["preRun"]) {
+        if (typeof Module4["preRun"] == "function")
+          Module4["preRun"] = [Module4["preRun"]];
+        while (Module4["preRun"].length) {
+          addOnPreRun(Module4["preRun"].shift());
         }
       }
       callRuntimeCallbacks(__ATPRERUN__);
@@ -24751,11 +23349,11 @@ var Module2 = (() => {
     }
     function postRun() {
       checkStackCookie();
-      if (Module3["postRun"]) {
-        if (typeof Module3["postRun"] == "function")
-          Module3["postRun"] = [Module3["postRun"]];
-        while (Module3["postRun"].length) {
-          addOnPostRun(Module3["postRun"].shift());
+      if (Module4["postRun"]) {
+        if (typeof Module4["postRun"] == "function")
+          Module4["postRun"] = [Module4["postRun"]];
+        while (Module4["postRun"].length) {
+          addOnPostRun(Module4["postRun"].shift());
         }
       }
       callRuntimeCallbacks(__ATPOSTRUN__);
@@ -24779,8 +23377,8 @@ var Module2 = (() => {
     var runDependencyTracking = {};
     function addRunDependency(id) {
       runDependencies++;
-      if (Module3["monitorRunDependencies"]) {
-        Module3["monitorRunDependencies"](runDependencies);
+      if (Module4["monitorRunDependencies"]) {
+        Module4["monitorRunDependencies"](runDependencies);
       }
       if (id) {
         assert2(!runDependencyTracking[id]);
@@ -24811,8 +23409,8 @@ var Module2 = (() => {
     }
     function removeRunDependency(id) {
       runDependencies--;
-      if (Module3["monitorRunDependencies"]) {
-        Module3["monitorRunDependencies"](runDependencies);
+      if (Module4["monitorRunDependencies"]) {
+        Module4["monitorRunDependencies"](runDependencies);
       }
       if (id) {
         assert2(runDependencyTracking[id]);
@@ -24834,8 +23432,8 @@ var Module2 = (() => {
     }
     function abort(what) {
       {
-        if (Module3["onAbort"]) {
-          Module3["onAbort"](what);
+        if (Module4["onAbort"]) {
+          Module4["onAbort"](what);
         }
       }
       what = "Aborted(" + what + ")";
@@ -24869,8 +23467,8 @@ var Module2 = (() => {
     }, ErrnoError: function ErrnoError() {
       FS.error();
     } };
-    Module3["FS_createDataFile"] = FS.createDataFile;
-    Module3["FS_createPreloadedFile"] = FS.createPreloadedFile;
+    Module4["FS_createDataFile"] = FS.createDataFile;
+    Module4["FS_createPreloadedFile"] = FS.createPreloadedFile;
     var dataURIPrefix = "data:application/octet-stream;base64,";
     function isDataURI(filename) {
       return filename.startsWith(dataURIPrefix);
@@ -24883,7 +23481,7 @@ var Module2 = (() => {
         var displayName = name;
         var asm2 = fixedasm;
         if (!fixedasm) {
-          asm2 = Module3["asm"];
+          asm2 = Module4["asm"];
         }
         assert2(runtimeInitialized, "native function `" + displayName + "` called before runtime initialization");
         if (!asm2[name]) {
@@ -24893,7 +23491,7 @@ var Module2 = (() => {
       };
     }
     var wasmBinaryFile;
-    if (Module3["locateFile"]) {
+    if (Module4["locateFile"]) {
       wasmBinaryFile = "meshoptimizer_clusterize.wasm";
       if (!isDataURI(wasmBinaryFile)) {
         wasmBinaryFile = locateFile(wasmBinaryFile);
@@ -24935,19 +23533,19 @@ var Module2 = (() => {
       var info = { "env": asmLibraryArg, "wasi_snapshot_preview1": asmLibraryArg };
       function receiveInstance(instance, module) {
         var exports2 = instance.exports;
-        Module3["asm"] = exports2;
-        wasmMemory = Module3["asm"]["memory"];
+        Module4["asm"] = exports2;
+        wasmMemory = Module4["asm"]["memory"];
         assert2(wasmMemory, "memory not found in wasm exports");
         updateGlobalBufferAndViews(wasmMemory.buffer);
-        wasmTable = Module3["asm"]["__indirect_function_table"];
+        wasmTable = Module4["asm"]["__indirect_function_table"];
         assert2(wasmTable, "table not found in wasm exports");
-        addOnInit(Module3["asm"]["__wasm_call_ctors"]);
+        addOnInit(Module4["asm"]["__wasm_call_ctors"]);
         removeRunDependency("wasm-instantiate");
       }
       addRunDependency("wasm-instantiate");
-      var trueModule = Module3;
+      var trueModule = Module4;
       function receiveInstantiationResult(result) {
-        assert2(Module3 === trueModule, "the Module object should not be replaced during async compilation - perhaps the order of HTML elements is wrong?");
+        assert2(Module4 === trueModule, "the Module object should not be replaced during async compilation - perhaps the order of HTML elements is wrong?");
         trueModule = null;
         receiveInstance(result["instance"]);
       }
@@ -24978,9 +23576,9 @@ var Module2 = (() => {
           return instantiateArrayBuffer(receiveInstantiationResult);
         }
       }
-      if (Module3["instantiateWasm"]) {
+      if (Module4["instantiateWasm"]) {
         try {
-          var exports = Module3["instantiateWasm"](info, receiveInstance);
+          var exports = Module4["instantiateWasm"](info, receiveInstance);
           return exports;
         } catch (e) {
           err("Module.instantiateWasm callback failed with error: " + e);
@@ -24999,7 +23597,7 @@ var Module2 = (() => {
     }
     function callRuntimeCallbacks(callbacks) {
       while (callbacks.length > 0) {
-        callbacks.shift()(Module3);
+        callbacks.shift()(Module4);
       }
     }
     function demangle(func) {
@@ -25083,7 +23681,7 @@ var Module2 = (() => {
       return false;
     }
     function getCFunc(ident) {
-      var func = Module3["_" + ident];
+      var func = Module4["_" + ident];
       assert2(func, "Cannot call unknown function " + ident + ", make sure it is exported");
       return func;
     }
@@ -25144,29 +23742,29 @@ var Module2 = (() => {
     }
     var asmLibraryArg = { "__assert_fail": ___assert_fail, "abort": _abort, "emscripten_memcpy_big": _emscripten_memcpy_big, "emscripten_resize_heap": _emscripten_resize_heap };
     var asm = createWasm();
-    var ___wasm_call_ctors = Module3["___wasm_call_ctors"] = createExportWrapper("__wasm_call_ctors");
-    var _meshopt_buildMeshletsBound = Module3["_meshopt_buildMeshletsBound"] = createExportWrapper("meshopt_buildMeshletsBound");
-    var _meshopt_buildMeshlets = Module3["_meshopt_buildMeshlets"] = createExportWrapper("meshopt_buildMeshlets");
-    var _meshopt_buildMeshletsScan = Module3["_meshopt_buildMeshletsScan"] = createExportWrapper("meshopt_buildMeshletsScan");
-    var ___errno_location = Module3["___errno_location"] = createExportWrapper("__errno_location");
-    var _fflush = Module3["_fflush"] = createExportWrapper("fflush");
-    var _malloc = Module3["_malloc"] = createExportWrapper("malloc");
-    var _emscripten_stack_init = Module3["_emscripten_stack_init"] = function() {
-      return (_emscripten_stack_init = Module3["_emscripten_stack_init"] = Module3["asm"]["emscripten_stack_init"]).apply(null, arguments);
+    var ___wasm_call_ctors = Module4["___wasm_call_ctors"] = createExportWrapper("__wasm_call_ctors");
+    var _meshopt_buildMeshletsBound = Module4["_meshopt_buildMeshletsBound"] = createExportWrapper("meshopt_buildMeshletsBound");
+    var _meshopt_buildMeshlets = Module4["_meshopt_buildMeshlets"] = createExportWrapper("meshopt_buildMeshlets");
+    var _meshopt_buildMeshletsScan = Module4["_meshopt_buildMeshletsScan"] = createExportWrapper("meshopt_buildMeshletsScan");
+    var ___errno_location = Module4["___errno_location"] = createExportWrapper("__errno_location");
+    var _fflush = Module4["_fflush"] = createExportWrapper("fflush");
+    var _malloc = Module4["_malloc"] = createExportWrapper("malloc");
+    var _emscripten_stack_init = Module4["_emscripten_stack_init"] = function() {
+      return (_emscripten_stack_init = Module4["_emscripten_stack_init"] = Module4["asm"]["emscripten_stack_init"]).apply(null, arguments);
     };
-    var _emscripten_stack_get_free = Module3["_emscripten_stack_get_free"] = function() {
-      return (_emscripten_stack_get_free = Module3["_emscripten_stack_get_free"] = Module3["asm"]["emscripten_stack_get_free"]).apply(null, arguments);
+    var _emscripten_stack_get_free = Module4["_emscripten_stack_get_free"] = function() {
+      return (_emscripten_stack_get_free = Module4["_emscripten_stack_get_free"] = Module4["asm"]["emscripten_stack_get_free"]).apply(null, arguments);
     };
-    var _emscripten_stack_get_base = Module3["_emscripten_stack_get_base"] = function() {
-      return (_emscripten_stack_get_base = Module3["_emscripten_stack_get_base"] = Module3["asm"]["emscripten_stack_get_base"]).apply(null, arguments);
+    var _emscripten_stack_get_base = Module4["_emscripten_stack_get_base"] = function() {
+      return (_emscripten_stack_get_base = Module4["_emscripten_stack_get_base"] = Module4["asm"]["emscripten_stack_get_base"]).apply(null, arguments);
     };
-    var _emscripten_stack_get_end = Module3["_emscripten_stack_get_end"] = function() {
-      return (_emscripten_stack_get_end = Module3["_emscripten_stack_get_end"] = Module3["asm"]["emscripten_stack_get_end"]).apply(null, arguments);
+    var _emscripten_stack_get_end = Module4["_emscripten_stack_get_end"] = function() {
+      return (_emscripten_stack_get_end = Module4["_emscripten_stack_get_end"] = Module4["asm"]["emscripten_stack_get_end"]).apply(null, arguments);
     };
-    var stackSave = Module3["stackSave"] = createExportWrapper("stackSave");
-    var stackRestore = Module3["stackRestore"] = createExportWrapper("stackRestore");
-    var stackAlloc = Module3["stackAlloc"] = createExportWrapper("stackAlloc");
-    Module3["cwrap"] = cwrap;
+    var stackSave = Module4["stackSave"] = createExportWrapper("stackSave");
+    var stackRestore = Module4["stackRestore"] = createExportWrapper("stackRestore");
+    var stackAlloc = Module4["stackAlloc"] = createExportWrapper("stackAlloc");
+    Module4["cwrap"] = cwrap;
     var unexportedRuntimeSymbols = ["run", "UTF8ArrayToString", "UTF8ToString", "stringToUTF8Array", "stringToUTF8", "lengthBytesUTF8", "addOnPreRun", "addOnInit", "addOnPreMain", "addOnExit", "addOnPostRun", "addRunDependency", "removeRunDependency", "FS_createFolder", "FS_createPath", "FS_createDataFile", "FS_createPreloadedFile", "FS_createLazyFile", "FS_createLink", "FS_createDevice", "FS_unlink", "getLEB", "getFunctionTables", "alignFunctionTables", "registerFunctions", "prettyPrint", "getCompilerSetting", "print", "printErr", "callMain", "abort", "keepRuntimeAlive", "wasmMemory", "stackAlloc", "stackSave", "stackRestore", "getTempRet0", "setTempRet0", "writeStackCookie", "checkStackCookie", "ptrToString", "zeroMemory", "stringToNewUTF8", "exitJS", "getHeapMax", "emscripten_realloc_buffer", "ENV", "ERRNO_CODES", "ERRNO_MESSAGES", "setErrNo", "inetPton4", "inetNtop4", "inetPton6", "inetNtop6", "readSockaddr", "writeSockaddr", "DNS", "getHostByName", "Protocols", "Sockets", "getRandomDevice", "warnOnce", "traverseStack", "UNWIND_CACHE", "convertPCtoSourceLocation", "readAsmConstArgsArray", "readAsmConstArgs", "mainThreadEM_ASM", "jstoi_q", "jstoi_s", "getExecutableName", "listenOnce", "autoResumeAudioContext", "dynCallLegacy", "getDynCaller", "dynCall", "handleException", "runtimeKeepalivePush", "runtimeKeepalivePop", "callUserCallback", "maybeExit", "safeSetTimeout", "asmjsMangle", "asyncLoad", "alignMemory", "mmapAlloc", "writeI53ToI64", "writeI53ToI64Clamped", "writeI53ToI64Signaling", "writeI53ToU64Clamped", "writeI53ToU64Signaling", "readI53FromI64", "readI53FromU64", "convertI32PairToI53", "convertI32PairToI53Checked", "convertU32PairToI53", "getCFunc", "ccall", "uleb128Encode", "sigToWasmTypes", "generateFuncType", "convertJsFunctionToWasm", "freeTableIndexes", "functionsInTableMap", "getEmptyTableSlot", "updateTableMap", "addFunction", "removeFunction", "reallyNegative", "unSign", "strLen", "reSign", "formatString", "setValue", "getValue", "PATH", "PATH_FS", "intArrayFromString", "intArrayToString", "AsciiToString", "stringToAscii", "UTF16Decoder", "UTF16ToString", "stringToUTF16", "lengthBytesUTF16", "UTF32ToString", "stringToUTF32", "lengthBytesUTF32", "allocateUTF8", "allocateUTF8OnStack", "writeStringToMemory", "writeArrayToMemory", "writeAsciiToMemory", "SYSCALLS", "getSocketFromFD", "getSocketAddress", "JSEvents", "registerKeyEventCallback", "specialHTMLTargets", "maybeCStringToJsString", "findEventTarget", "findCanvasEventTarget", "getBoundingClientRect", "fillMouseEventData", "registerMouseEventCallback", "registerWheelEventCallback", "registerUiEventCallback", "registerFocusEventCallback", "fillDeviceOrientationEventData", "registerDeviceOrientationEventCallback", "fillDeviceMotionEventData", "registerDeviceMotionEventCallback", "screenOrientation", "fillOrientationChangeEventData", "registerOrientationChangeEventCallback", "fillFullscreenChangeEventData", "registerFullscreenChangeEventCallback", "JSEvents_requestFullscreen", "JSEvents_resizeCanvasForFullscreen", "registerRestoreOldStyle", "hideEverythingExceptGivenElement", "restoreHiddenElements", "setLetterbox", "currentFullscreenStrategy", "restoreOldWindowedStyle", "softFullscreenResizeWebGLRenderTarget", "doRequestFullscreen", "fillPointerlockChangeEventData", "registerPointerlockChangeEventCallback", "registerPointerlockErrorEventCallback", "requestPointerLock", "fillVisibilityChangeEventData", "registerVisibilityChangeEventCallback", "registerTouchEventCallback", "fillGamepadEventData", "registerGamepadEventCallback", "registerBeforeUnloadEventCallback", "fillBatteryEventData", "battery", "registerBatteryEventCallback", "setCanvasElementSize", "getCanvasElementSize", "demangle", "demangleAll", "jsStackTrace", "stackTrace", "ExitStatus", "getEnvStrings", "checkWasiClock", "flush_NO_FILESYSTEM", "dlopenMissingError", "createDyncallWrapper", "setImmediateWrapped", "clearImmediateWrapped", "polyfillSetImmediate", "uncaughtExceptionCount", "exceptionLast", "exceptionCaught", "ExceptionInfo", "exception_addRef", "exception_decRef", "Browser", "setMainLoop", "wget", "FS", "MEMFS", "TTY", "PIPEFS", "SOCKFS", "_setNetworkCallback", "tempFixedLengthArray", "miniTempWebGLFloatBuffers", "heapObjectForWebGLType", "heapAccessShiftForWebGLHeap", "GL", "emscriptenWebGLGet", "computeUnpackAlignedImageSize", "emscriptenWebGLGetTexPixelData", "emscriptenWebGLGetUniform", "webglGetUniformLocation", "webglPrepareUniformLocationsBeforeFirstUse", "webglGetLeftBracePos", "emscriptenWebGLGetVertexAttrib", "writeGLArray", "AL", "SDL_unicode", "SDL_ttfContext", "SDL_audio", "SDL", "SDL_gfx", "GLUT", "EGL", "GLFW_Window", "GLFW", "GLEW", "IDBStore", "runAndAbortIfError", "ALLOC_NORMAL", "ALLOC_STACK", "allocate"];
     unexportedRuntimeSymbols.forEach(unexportedRuntimeSymbol);
     var missingLibrarySymbols = ["ptrToString", "zeroMemory", "stringToNewUTF8", "exitJS", "setErrNo", "inetPton4", "inetNtop4", "inetPton6", "inetNtop6", "readSockaddr", "writeSockaddr", "getHostByName", "getRandomDevice", "traverseStack", "convertPCtoSourceLocation", "readAsmConstArgs", "mainThreadEM_ASM", "jstoi_q", "jstoi_s", "getExecutableName", "listenOnce", "autoResumeAudioContext", "dynCallLegacy", "getDynCaller", "dynCall", "runtimeKeepalivePush", "runtimeKeepalivePop", "callUserCallback", "maybeExit", "safeSetTimeout", "asmjsMangle", "asyncLoad", "alignMemory", "mmapAlloc", "writeI53ToI64", "writeI53ToI64Clamped", "writeI53ToI64Signaling", "writeI53ToU64Clamped", "writeI53ToU64Signaling", "readI53FromI64", "readI53FromU64", "convertI32PairToI53", "convertI32PairToI53Checked", "convertU32PairToI53", "uleb128Encode", "sigToWasmTypes", "generateFuncType", "convertJsFunctionToWasm", "getEmptyTableSlot", "updateTableMap", "addFunction", "removeFunction", "reallyNegative", "unSign", "strLen", "reSign", "formatString", "intArrayFromString", "intArrayToString", "AsciiToString", "stringToAscii", "UTF16ToString", "stringToUTF16", "lengthBytesUTF16", "UTF32ToString", "stringToUTF32", "lengthBytesUTF32", "allocateUTF8", "allocateUTF8OnStack", "writeStringToMemory", "writeAsciiToMemory", "getSocketFromFD", "getSocketAddress", "registerKeyEventCallback", "maybeCStringToJsString", "findEventTarget", "findCanvasEventTarget", "getBoundingClientRect", "fillMouseEventData", "registerMouseEventCallback", "registerWheelEventCallback", "registerUiEventCallback", "registerFocusEventCallback", "fillDeviceOrientationEventData", "registerDeviceOrientationEventCallback", "fillDeviceMotionEventData", "registerDeviceMotionEventCallback", "screenOrientation", "fillOrientationChangeEventData", "registerOrientationChangeEventCallback", "fillFullscreenChangeEventData", "registerFullscreenChangeEventCallback", "JSEvents_requestFullscreen", "JSEvents_resizeCanvasForFullscreen", "registerRestoreOldStyle", "hideEverythingExceptGivenElement", "restoreHiddenElements", "setLetterbox", "softFullscreenResizeWebGLRenderTarget", "doRequestFullscreen", "fillPointerlockChangeEventData", "registerPointerlockChangeEventCallback", "registerPointerlockErrorEventCallback", "requestPointerLock", "fillVisibilityChangeEventData", "registerVisibilityChangeEventCallback", "registerTouchEventCallback", "fillGamepadEventData", "registerGamepadEventCallback", "registerBeforeUnloadEventCallback", "fillBatteryEventData", "battery", "registerBatteryEventCallback", "setCanvasElementSize", "getCanvasElementSize", "getEnvStrings", "checkWasiClock", "flush_NO_FILESYSTEM", "createDyncallWrapper", "setImmediateWrapped", "clearImmediateWrapped", "polyfillSetImmediate", "ExceptionInfo", "exception_addRef", "exception_decRef", "setMainLoop", "_setNetworkCallback", "heapObjectForWebGLType", "heapAccessShiftForWebGLHeap", "emscriptenWebGLGet", "computeUnpackAlignedImageSize", "emscriptenWebGLGetTexPixelData", "emscriptenWebGLGetUniform", "webglGetUniformLocation", "webglPrepareUniformLocationsBeforeFirstUse", "webglGetLeftBracePos", "emscriptenWebGLGetVertexAttrib", "writeGLArray", "SDL_unicode", "SDL_ttfContext", "SDL_audio", "GLFW_Window", "runAndAbortIfError", "ALLOC_NORMAL", "ALLOC_STACK", "allocate"];
@@ -25196,21 +23794,21 @@ var Module2 = (() => {
         if (calledRun)
           return;
         calledRun = true;
-        Module3["calledRun"] = true;
+        Module4["calledRun"] = true;
         if (ABORT)
           return;
         initRuntime();
-        readyPromiseResolve(Module3);
-        if (Module3["onRuntimeInitialized"])
-          Module3["onRuntimeInitialized"]();
-        assert2(!Module3["_main"], 'compiled without a main, but one is present. if you added it from JS, use Module["onRuntimeInitialized"]');
+        readyPromiseResolve(Module4);
+        if (Module4["onRuntimeInitialized"])
+          Module4["onRuntimeInitialized"]();
+        assert2(!Module4["_main"], 'compiled without a main, but one is present. if you added it from JS, use Module["onRuntimeInitialized"]');
         postRun();
       }
-      if (Module3["setStatus"]) {
-        Module3["setStatus"]("Running...");
+      if (Module4["setStatus"]) {
+        Module4["setStatus"]("Running...");
         setTimeout(function() {
           setTimeout(function() {
-            Module3["setStatus"]("");
+            Module4["setStatus"]("");
           }, 1);
           doRun();
         }, 1);
@@ -25219,15 +23817,15 @@ var Module2 = (() => {
       }
       checkStackCookie();
     }
-    if (Module3["preInit"]) {
-      if (typeof Module3["preInit"] == "function")
-        Module3["preInit"] = [Module3["preInit"]];
-      while (Module3["preInit"].length > 0) {
-        Module3["preInit"].pop()();
+    if (Module4["preInit"]) {
+      if (typeof Module4["preInit"] == "function")
+        Module4["preInit"] = [Module4["preInit"]];
+      while (Module4["preInit"].length > 0) {
+        Module4["preInit"].pop()();
       }
     }
     run();
-    return Module3.ready;
+    return Module4.ready;
   };
 })();
 var meshoptimizer_clusterize_default = Module2;
@@ -25309,7 +23907,6 @@ var MeshletBuilder_wasm = class {
     const vertex_count = vertices.length;
     const vertex_positions_stride = 3 * Float32Array.BYTES_PER_ELEMENT;
     const max_meshlets = meshopt_buildMeshletsBound(indices.length, max_vertices, max_triangles);
-    console.log("max_meshlets", max_meshlets);
     const meshlets = new Uint32Array(max_meshlets * 4);
     const meshlet_vertices = new Uint32Array(max_meshlets * max_vertices);
     const meshlet_triangles = new Uint8Array(max_meshlets * max_triangles * 3);
@@ -25452,6 +24049,887 @@ MeshletCreator.max_vertices = 255;
 MeshletCreator.max_triangles = 128;
 MeshletCreator.cone_weight = 0;
 
+// src/MeshletMerger.ts
+var MeshletMerger = class {
+  static merge(meshlets) {
+    const mergedMeshlet = {
+      vertices: [],
+      vertex_count: 0,
+      indices: [],
+      index_count: 0
+    };
+    let indexOffset = 0;
+    const mergedIndices = [];
+    for (let i = 0; i < meshlets.length; ++i) {
+      const indices = meshlets[i].indices;
+      for (let j = 0; j < indices.length; j++) {
+        mergedIndices.push(indices[j] + indexOffset);
+      }
+      indexOffset += meshlets[i].vertex_count;
+    }
+    mergedMeshlet.indices = mergedIndices;
+    for (let i = 0; i < meshlets.length; ++i) {
+      const vertices = meshlets[i].vertices;
+      mergedMeshlet.vertices.push(...vertices);
+    }
+    mergedMeshlet.index_count = mergedMeshlet.indices.length;
+    mergedMeshlet.vertex_count = mergedMeshlet.vertices.length / 3;
+    return mergedMeshlet;
+  }
+};
+
+// src/metis-js/metis-5.1.0/metis.js
+var Module3 = (() => {
+  var _scriptDir = import.meta.url;
+  return function(Module4) {
+    Module4 = Module4 || {};
+    var Module4 = typeof Module4 != "undefined" ? Module4 : {};
+    var readyPromiseResolve, readyPromiseReject;
+    Module4["ready"] = new Promise(function(resolve, reject) {
+      readyPromiseResolve = resolve;
+      readyPromiseReject = reject;
+    });
+    var moduleOverrides = Object.assign({}, Module4);
+    var arguments_ = [];
+    var thisProgram = "./this.program";
+    var quit_ = (status, toThrow) => {
+      throw toThrow;
+    };
+    var ENVIRONMENT_IS_WEB = true;
+    var ENVIRONMENT_IS_WORKER = false;
+    var scriptDirectory = "";
+    function locateFile(path) {
+      if (Module4["locateFile"]) {
+        return Module4["locateFile"](path, scriptDirectory);
+      }
+      return scriptDirectory + path;
+    }
+    var read_, readAsync, readBinary, setWindowTitle;
+    if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
+      if (ENVIRONMENT_IS_WORKER) {
+        scriptDirectory = self.location.href;
+      } else if (typeof document != "undefined" && document.currentScript) {
+        scriptDirectory = document.currentScript.src;
+      }
+      if (_scriptDir) {
+        scriptDirectory = _scriptDir;
+      }
+      if (scriptDirectory.indexOf("blob:") !== 0) {
+        scriptDirectory = scriptDirectory.substr(0, scriptDirectory.replace(/[?#].*/, "").lastIndexOf("/") + 1);
+      } else {
+        scriptDirectory = "";
+      }
+      {
+        read_ = (url) => {
+          var xhr = new XMLHttpRequest();
+          xhr.open("GET", url, false);
+          xhr.send(null);
+          return xhr.responseText;
+        };
+        if (ENVIRONMENT_IS_WORKER) {
+          readBinary = (url) => {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", url, false);
+            xhr.responseType = "arraybuffer";
+            xhr.send(null);
+            return new Uint8Array(xhr.response);
+          };
+        }
+        readAsync = (url, onload, onerror) => {
+          var xhr = new XMLHttpRequest();
+          xhr.open("GET", url, true);
+          xhr.responseType = "arraybuffer";
+          xhr.onload = () => {
+            if (xhr.status == 200 || xhr.status == 0 && xhr.response) {
+              onload(xhr.response);
+              return;
+            }
+            onerror();
+          };
+          xhr.onerror = onerror;
+          xhr.send(null);
+        };
+      }
+      setWindowTitle = (title) => document.title = title;
+    } else {
+    }
+    var out = Module4["print"] || console.log.bind(console);
+    var err = Module4["printErr"] || console.warn.bind(console);
+    Object.assign(Module4, moduleOverrides);
+    moduleOverrides = null;
+    if (Module4["arguments"])
+      arguments_ = Module4["arguments"];
+    if (Module4["thisProgram"])
+      thisProgram = Module4["thisProgram"];
+    if (Module4["quit"])
+      quit_ = Module4["quit"];
+    var wasmBinary;
+    if (Module4["wasmBinary"])
+      wasmBinary = Module4["wasmBinary"];
+    var noExitRuntime = Module4["noExitRuntime"] || true;
+    if (typeof WebAssembly != "object") {
+      abort("no native wasm support detected");
+    }
+    var wasmMemory;
+    var ABORT = false;
+    var EXITSTATUS;
+    var UTF8Decoder = typeof TextDecoder != "undefined" ? new TextDecoder("utf8") : void 0;
+    function UTF8ArrayToString(heapOrArray, idx, maxBytesToRead) {
+      var endIdx = idx + maxBytesToRead;
+      var endPtr = idx;
+      while (heapOrArray[endPtr] && !(endPtr >= endIdx))
+        ++endPtr;
+      if (endPtr - idx > 16 && heapOrArray.buffer && UTF8Decoder) {
+        return UTF8Decoder.decode(heapOrArray.subarray(idx, endPtr));
+      }
+      var str = "";
+      while (idx < endPtr) {
+        var u0 = heapOrArray[idx++];
+        if (!(u0 & 128)) {
+          str += String.fromCharCode(u0);
+          continue;
+        }
+        var u1 = heapOrArray[idx++] & 63;
+        if ((u0 & 224) == 192) {
+          str += String.fromCharCode((u0 & 31) << 6 | u1);
+          continue;
+        }
+        var u2 = heapOrArray[idx++] & 63;
+        if ((u0 & 240) == 224) {
+          u0 = (u0 & 15) << 12 | u1 << 6 | u2;
+        } else {
+          u0 = (u0 & 7) << 18 | u1 << 12 | u2 << 6 | heapOrArray[idx++] & 63;
+        }
+        if (u0 < 65536) {
+          str += String.fromCharCode(u0);
+        } else {
+          var ch = u0 - 65536;
+          str += String.fromCharCode(55296 | ch >> 10, 56320 | ch & 1023);
+        }
+      }
+      return str;
+    }
+    function UTF8ToString(ptr, maxBytesToRead) {
+      return ptr ? UTF8ArrayToString(HEAPU8, ptr, maxBytesToRead) : "";
+    }
+    function stringToUTF8Array(str, heap, outIdx, maxBytesToWrite) {
+      if (!(maxBytesToWrite > 0))
+        return 0;
+      var startIdx = outIdx;
+      var endIdx = outIdx + maxBytesToWrite - 1;
+      for (var i = 0; i < str.length; ++i) {
+        var u = str.charCodeAt(i);
+        if (u >= 55296 && u <= 57343) {
+          var u1 = str.charCodeAt(++i);
+          u = 65536 + ((u & 1023) << 10) | u1 & 1023;
+        }
+        if (u <= 127) {
+          if (outIdx >= endIdx)
+            break;
+          heap[outIdx++] = u;
+        } else if (u <= 2047) {
+          if (outIdx + 1 >= endIdx)
+            break;
+          heap[outIdx++] = 192 | u >> 6;
+          heap[outIdx++] = 128 | u & 63;
+        } else if (u <= 65535) {
+          if (outIdx + 2 >= endIdx)
+            break;
+          heap[outIdx++] = 224 | u >> 12;
+          heap[outIdx++] = 128 | u >> 6 & 63;
+          heap[outIdx++] = 128 | u & 63;
+        } else {
+          if (outIdx + 3 >= endIdx)
+            break;
+          heap[outIdx++] = 240 | u >> 18;
+          heap[outIdx++] = 128 | u >> 12 & 63;
+          heap[outIdx++] = 128 | u >> 6 & 63;
+          heap[outIdx++] = 128 | u & 63;
+        }
+      }
+      heap[outIdx] = 0;
+      return outIdx - startIdx;
+    }
+    function stringToUTF8(str, outPtr, maxBytesToWrite) {
+      return stringToUTF8Array(str, HEAPU8, outPtr, maxBytesToWrite);
+    }
+    var buffer, HEAP8, HEAPU8, HEAP16, HEAPU16, HEAP32, HEAPU32, HEAPF32, HEAPF64;
+    function updateGlobalBufferAndViews(buf) {
+      buffer = buf;
+      Module4["HEAP8"] = HEAP8 = new Int8Array(buf);
+      Module4["HEAP16"] = HEAP16 = new Int16Array(buf);
+      Module4["HEAP32"] = HEAP32 = new Int32Array(buf);
+      Module4["HEAPU8"] = HEAPU8 = new Uint8Array(buf);
+      Module4["HEAPU16"] = HEAPU16 = new Uint16Array(buf);
+      Module4["HEAPU32"] = HEAPU32 = new Uint32Array(buf);
+      Module4["HEAPF32"] = HEAPF32 = new Float32Array(buf);
+      Module4["HEAPF64"] = HEAPF64 = new Float64Array(buf);
+    }
+    var INITIAL_MEMORY = Module4["INITIAL_MEMORY"] || 16777216;
+    var wasmTable;
+    var __ATPRERUN__ = [];
+    var __ATINIT__ = [];
+    var __ATPOSTRUN__ = [];
+    var runtimeInitialized = false;
+    function keepRuntimeAlive() {
+      return noExitRuntime;
+    }
+    function preRun() {
+      if (Module4["preRun"]) {
+        if (typeof Module4["preRun"] == "function")
+          Module4["preRun"] = [Module4["preRun"]];
+        while (Module4["preRun"].length) {
+          addOnPreRun(Module4["preRun"].shift());
+        }
+      }
+      callRuntimeCallbacks(__ATPRERUN__);
+    }
+    function initRuntime() {
+      runtimeInitialized = true;
+      callRuntimeCallbacks(__ATINIT__);
+    }
+    function postRun() {
+      if (Module4["postRun"]) {
+        if (typeof Module4["postRun"] == "function")
+          Module4["postRun"] = [Module4["postRun"]];
+        while (Module4["postRun"].length) {
+          addOnPostRun(Module4["postRun"].shift());
+        }
+      }
+      callRuntimeCallbacks(__ATPOSTRUN__);
+    }
+    function addOnPreRun(cb) {
+      __ATPRERUN__.unshift(cb);
+    }
+    function addOnInit(cb) {
+      __ATINIT__.unshift(cb);
+    }
+    function addOnPostRun(cb) {
+      __ATPOSTRUN__.unshift(cb);
+    }
+    var runDependencies = 0;
+    var runDependencyWatcher = null;
+    var dependenciesFulfilled = null;
+    function addRunDependency(id) {
+      runDependencies++;
+      if (Module4["monitorRunDependencies"]) {
+        Module4["monitorRunDependencies"](runDependencies);
+      }
+    }
+    function removeRunDependency(id) {
+      runDependencies--;
+      if (Module4["monitorRunDependencies"]) {
+        Module4["monitorRunDependencies"](runDependencies);
+      }
+      if (runDependencies == 0) {
+        if (runDependencyWatcher !== null) {
+          clearInterval(runDependencyWatcher);
+          runDependencyWatcher = null;
+        }
+        if (dependenciesFulfilled) {
+          var callback = dependenciesFulfilled;
+          dependenciesFulfilled = null;
+          callback();
+        }
+      }
+    }
+    function abort(what) {
+      {
+        if (Module4["onAbort"]) {
+          Module4["onAbort"](what);
+        }
+      }
+      what = "Aborted(" + what + ")";
+      err(what);
+      ABORT = true;
+      EXITSTATUS = 1;
+      what += ". Build with -sASSERTIONS for more info.";
+      var e = new WebAssembly.RuntimeError(what);
+      readyPromiseReject(e);
+      throw e;
+    }
+    var dataURIPrefix = "data:application/octet-stream;base64,";
+    function isDataURI(filename) {
+      return filename.startsWith(dataURIPrefix);
+    }
+    var wasmBinaryFile;
+    if (Module4["locateFile"]) {
+      wasmBinaryFile = "metis.wasm";
+      if (!isDataURI(wasmBinaryFile)) {
+        wasmBinaryFile = locateFile(wasmBinaryFile);
+      }
+    } else {
+      wasmBinaryFile = new URL("metis.wasm", import.meta.url).toString();
+    }
+    function getBinary(file) {
+      try {
+        if (file == wasmBinaryFile && wasmBinary) {
+          return new Uint8Array(wasmBinary);
+        }
+        if (readBinary) {
+          return readBinary(file);
+        }
+        throw "both async and sync fetching of the wasm failed";
+      } catch (err2) {
+        abort(err2);
+      }
+    }
+    function getBinaryPromise() {
+      if (!wasmBinary && (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER)) {
+        if (typeof fetch == "function") {
+          return fetch(wasmBinaryFile, { credentials: "same-origin" }).then(function(response) {
+            if (!response["ok"]) {
+              throw "failed to load wasm binary file at '" + wasmBinaryFile + "'";
+            }
+            return response["arrayBuffer"]();
+          }).catch(function() {
+            return getBinary(wasmBinaryFile);
+          });
+        }
+      }
+      return Promise.resolve().then(function() {
+        return getBinary(wasmBinaryFile);
+      });
+    }
+    function createWasm() {
+      var info = { "a": asmLibraryArg };
+      function receiveInstance(instance, module) {
+        var exports2 = instance.exports;
+        Module4["asm"] = exports2;
+        wasmMemory = Module4["asm"]["r"];
+        updateGlobalBufferAndViews(wasmMemory.buffer);
+        wasmTable = Module4["asm"]["z"];
+        addOnInit(Module4["asm"]["s"]);
+        removeRunDependency("wasm-instantiate");
+      }
+      addRunDependency("wasm-instantiate");
+      function receiveInstantiationResult(result) {
+        receiveInstance(result["instance"]);
+      }
+      function instantiateArrayBuffer(receiver) {
+        return getBinaryPromise().then(function(binary) {
+          return WebAssembly.instantiate(binary, info);
+        }).then(function(instance) {
+          return instance;
+        }).then(receiver, function(reason) {
+          err("failed to asynchronously prepare wasm: " + reason);
+          abort(reason);
+        });
+      }
+      function instantiateAsync() {
+        if (!wasmBinary && typeof WebAssembly.instantiateStreaming == "function" && !isDataURI(wasmBinaryFile) && typeof fetch == "function") {
+          return fetch(wasmBinaryFile, { credentials: "same-origin" }).then(function(response) {
+            var result = WebAssembly.instantiateStreaming(response, info);
+            return result.then(receiveInstantiationResult, function(reason) {
+              err("wasm streaming compile failed: " + reason);
+              err("falling back to ArrayBuffer instantiation");
+              return instantiateArrayBuffer(receiveInstantiationResult);
+            });
+          });
+        } else {
+          return instantiateArrayBuffer(receiveInstantiationResult);
+        }
+      }
+      if (Module4["instantiateWasm"]) {
+        try {
+          var exports = Module4["instantiateWasm"](info, receiveInstance);
+          return exports;
+        } catch (e) {
+          err("Module.instantiateWasm callback failed with error: " + e);
+          readyPromiseReject(e);
+        }
+      }
+      instantiateAsync().catch(readyPromiseReject);
+      return {};
+    }
+    function ExitStatus(status) {
+      this.name = "ExitStatus";
+      this.message = "Program terminated with exit(" + status + ")";
+      this.status = status;
+    }
+    function callRuntimeCallbacks(callbacks) {
+      while (callbacks.length > 0) {
+        callbacks.shift()(Module4);
+      }
+    }
+    function writeArrayToMemory(array, buffer2) {
+      HEAP8.set(array, buffer2);
+    }
+    var wasmTableMirror = [];
+    function getWasmTableEntry(funcPtr) {
+      var func = wasmTableMirror[funcPtr];
+      if (!func) {
+        if (funcPtr >= wasmTableMirror.length)
+          wasmTableMirror.length = funcPtr + 1;
+        wasmTableMirror[funcPtr] = func = wasmTable.get(funcPtr);
+      }
+      return func;
+    }
+    function ___call_sighandler(fp, sig) {
+      getWasmTableEntry(fp)(sig);
+    }
+    function __emscripten_throw_longjmp() {
+      throw Infinity;
+    }
+    function _emscripten_memcpy_big(dest, src, num) {
+      HEAPU8.copyWithin(dest, src, src + num);
+    }
+    function getHeapMax() {
+      return 2147483648;
+    }
+    function emscripten_realloc_buffer(size) {
+      try {
+        wasmMemory.grow(size - buffer.byteLength + 65535 >>> 16);
+        updateGlobalBufferAndViews(wasmMemory.buffer);
+        return 1;
+      } catch (e) {
+      }
+    }
+    function _emscripten_resize_heap(requestedSize) {
+      var oldSize = HEAPU8.length;
+      requestedSize = requestedSize >>> 0;
+      var maxHeapSize = getHeapMax();
+      if (requestedSize > maxHeapSize) {
+        return false;
+      }
+      let alignUp = (x, multiple) => x + (multiple - x % multiple) % multiple;
+      for (var cutDown = 1; cutDown <= 4; cutDown *= 2) {
+        var overGrownHeapSize = oldSize * (1 + 0.2 / cutDown);
+        overGrownHeapSize = Math.min(overGrownHeapSize, requestedSize + 100663296);
+        var newSize = Math.min(maxHeapSize, alignUp(Math.max(requestedSize, overGrownHeapSize), 65536));
+        var replacement = emscripten_realloc_buffer(newSize);
+        if (replacement) {
+          return true;
+        }
+      }
+      return false;
+    }
+    var SYSCALLS = { varargs: void 0, get: function() {
+      SYSCALLS.varargs += 4;
+      var ret = HEAP32[SYSCALLS.varargs - 4 >> 2];
+      return ret;
+    }, getStr: function(ptr) {
+      var ret = UTF8ToString(ptr);
+      return ret;
+    } };
+    function _proc_exit(code) {
+      EXITSTATUS = code;
+      if (!keepRuntimeAlive()) {
+        if (Module4["onExit"])
+          Module4["onExit"](code);
+        ABORT = true;
+      }
+      quit_(code, new ExitStatus(code));
+    }
+    function exitJS(status, implicit) {
+      EXITSTATUS = status;
+      _proc_exit(status);
+    }
+    var _exit = exitJS;
+    function _fd_close(fd) {
+      return 52;
+    }
+    function _fd_seek(fd, offset_low, offset_high, whence, newOffset) {
+      return 70;
+    }
+    var printCharBuffers = [null, [], []];
+    function printChar(stream, curr) {
+      var buffer2 = printCharBuffers[stream];
+      if (curr === 0 || curr === 10) {
+        (stream === 1 ? out : err)(UTF8ArrayToString(buffer2, 0));
+        buffer2.length = 0;
+      } else {
+        buffer2.push(curr);
+      }
+    }
+    function _fd_write(fd, iov, iovcnt, pnum) {
+      var num = 0;
+      for (var i = 0; i < iovcnt; i++) {
+        var ptr = HEAPU32[iov >> 2];
+        var len = HEAPU32[iov + 4 >> 2];
+        iov += 8;
+        for (var j = 0; j < len; j++) {
+          printChar(fd, HEAPU8[ptr + j]);
+        }
+        num += len;
+      }
+      HEAPU32[pnum >> 2] = num;
+      return 0;
+    }
+    function getCFunc(ident) {
+      var func = Module4["_" + ident];
+      return func;
+    }
+    function ccall(ident, returnType, argTypes, args, opts) {
+      var toC = { "string": (str) => {
+        var ret2 = 0;
+        if (str !== null && str !== void 0 && str !== 0) {
+          var len = (str.length << 2) + 1;
+          ret2 = stackAlloc(len);
+          stringToUTF8(str, ret2, len);
+        }
+        return ret2;
+      }, "array": (arr) => {
+        var ret2 = stackAlloc(arr.length);
+        writeArrayToMemory(arr, ret2);
+        return ret2;
+      } };
+      function convertReturnValue(ret2) {
+        if (returnType === "string") {
+          return UTF8ToString(ret2);
+        }
+        if (returnType === "boolean")
+          return Boolean(ret2);
+        return ret2;
+      }
+      var func = getCFunc(ident);
+      var cArgs = [];
+      var stack = 0;
+      if (args) {
+        for (var i = 0; i < args.length; i++) {
+          var converter = toC[argTypes[i]];
+          if (converter) {
+            if (stack === 0)
+              stack = stackSave();
+            cArgs[i] = converter(args[i]);
+          } else {
+            cArgs[i] = args[i];
+          }
+        }
+      }
+      var ret = func.apply(null, cArgs);
+      function onDone(ret2) {
+        if (stack !== 0)
+          stackRestore(stack);
+        return convertReturnValue(ret2);
+      }
+      ret = onDone(ret);
+      return ret;
+    }
+    function cwrap(ident, returnType, argTypes, opts) {
+      argTypes = argTypes || [];
+      var numericArgs = argTypes.every((type) => type === "number" || type === "boolean");
+      var numericRet = returnType !== "string";
+      if (numericRet && numericArgs && !opts) {
+        return getCFunc(ident);
+      }
+      return function() {
+        return ccall(ident, returnType, argTypes, arguments, opts);
+      };
+    }
+    var asmLibraryArg = { "n": ___call_sighandler, "l": __emscripten_throw_longjmp, "p": _emscripten_memcpy_big, "m": _emscripten_resize_heap, "q": _exit, "o": _fd_close, "k": _fd_seek, "g": _fd_write, "c": invoke_d, "a": invoke_i, "i": invoke_iii, "h": invoke_iiii, "d": invoke_iiiiiii, "f": invoke_iiiiiiiii, "b": invoke_vi, "e": invoke_vii, "j": invoke_viii };
+    var asm = createWasm();
+    var ___wasm_call_ctors = Module4["___wasm_call_ctors"] = function() {
+      return (___wasm_call_ctors = Module4["___wasm_call_ctors"] = Module4["asm"]["s"]).apply(null, arguments);
+    };
+    var _metis_part_graph_kway = Module4["_metis_part_graph_kway"] = function() {
+      return (_metis_part_graph_kway = Module4["_metis_part_graph_kway"] = Module4["asm"]["t"]).apply(null, arguments);
+    };
+    var _metis_part_graph_kway_v2 = Module4["_metis_part_graph_kway_v2"] = function() {
+      return (_metis_part_graph_kway_v2 = Module4["_metis_part_graph_kway_v2"] = Module4["asm"]["u"]).apply(null, arguments);
+    };
+    var _metis_part_graph_recursive = Module4["_metis_part_graph_recursive"] = function() {
+      return (_metis_part_graph_recursive = Module4["_metis_part_graph_recursive"] = Module4["asm"]["v"]).apply(null, arguments);
+    };
+    var _create_buffer = Module4["_create_buffer"] = function() {
+      return (_create_buffer = Module4["_create_buffer"] = Module4["asm"]["w"]).apply(null, arguments);
+    };
+    var _malloc = Module4["_malloc"] = function() {
+      return (_malloc = Module4["_malloc"] = Module4["asm"]["x"]).apply(null, arguments);
+    };
+    var _destroy_buffer = Module4["_destroy_buffer"] = function() {
+      return (_destroy_buffer = Module4["_destroy_buffer"] = Module4["asm"]["y"]).apply(null, arguments);
+    };
+    var _setThrew = Module4["_setThrew"] = function() {
+      return (_setThrew = Module4["_setThrew"] = Module4["asm"]["A"]).apply(null, arguments);
+    };
+    var stackSave = Module4["stackSave"] = function() {
+      return (stackSave = Module4["stackSave"] = Module4["asm"]["B"]).apply(null, arguments);
+    };
+    var stackRestore = Module4["stackRestore"] = function() {
+      return (stackRestore = Module4["stackRestore"] = Module4["asm"]["C"]).apply(null, arguments);
+    };
+    var stackAlloc = Module4["stackAlloc"] = function() {
+      return (stackAlloc = Module4["stackAlloc"] = Module4["asm"]["D"]).apply(null, arguments);
+    };
+    function invoke_i(index) {
+      var sp = stackSave();
+      try {
+        return getWasmTableEntry(index)();
+      } catch (e) {
+        stackRestore(sp);
+        if (e !== e + 0)
+          throw e;
+        _setThrew(1, 0);
+      }
+    }
+    function invoke_iiiiiii(index, a1, a2, a3, a4, a5, a6) {
+      var sp = stackSave();
+      try {
+        return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6);
+      } catch (e) {
+        stackRestore(sp);
+        if (e !== e + 0)
+          throw e;
+        _setThrew(1, 0);
+      }
+    }
+    function invoke_viii(index, a1, a2, a3) {
+      var sp = stackSave();
+      try {
+        getWasmTableEntry(index)(a1, a2, a3);
+      } catch (e) {
+        stackRestore(sp);
+        if (e !== e + 0)
+          throw e;
+        _setThrew(1, 0);
+      }
+    }
+    function invoke_iiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8) {
+      var sp = stackSave();
+      try {
+        return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8);
+      } catch (e) {
+        stackRestore(sp);
+        if (e !== e + 0)
+          throw e;
+        _setThrew(1, 0);
+      }
+    }
+    function invoke_vii(index, a1, a2) {
+      var sp = stackSave();
+      try {
+        getWasmTableEntry(index)(a1, a2);
+      } catch (e) {
+        stackRestore(sp);
+        if (e !== e + 0)
+          throw e;
+        _setThrew(1, 0);
+      }
+    }
+    function invoke_iii(index, a1, a2) {
+      var sp = stackSave();
+      try {
+        return getWasmTableEntry(index)(a1, a2);
+      } catch (e) {
+        stackRestore(sp);
+        if (e !== e + 0)
+          throw e;
+        _setThrew(1, 0);
+      }
+    }
+    function invoke_vi(index, a1) {
+      var sp = stackSave();
+      try {
+        getWasmTableEntry(index)(a1);
+      } catch (e) {
+        stackRestore(sp);
+        if (e !== e + 0)
+          throw e;
+        _setThrew(1, 0);
+      }
+    }
+    function invoke_d(index) {
+      var sp = stackSave();
+      try {
+        return getWasmTableEntry(index)();
+      } catch (e) {
+        stackRestore(sp);
+        if (e !== e + 0)
+          throw e;
+        _setThrew(1, 0);
+      }
+    }
+    function invoke_iiii(index, a1, a2, a3) {
+      var sp = stackSave();
+      try {
+        return getWasmTableEntry(index)(a1, a2, a3);
+      } catch (e) {
+        stackRestore(sp);
+        if (e !== e + 0)
+          throw e;
+        _setThrew(1, 0);
+      }
+    }
+    Module4["ccall"] = ccall;
+    Module4["cwrap"] = cwrap;
+    var calledRun;
+    dependenciesFulfilled = function runCaller() {
+      if (!calledRun)
+        run();
+      if (!calledRun)
+        dependenciesFulfilled = runCaller;
+    };
+    function run(args) {
+      args = args || arguments_;
+      if (runDependencies > 0) {
+        return;
+      }
+      preRun();
+      if (runDependencies > 0) {
+        return;
+      }
+      function doRun() {
+        if (calledRun)
+          return;
+        calledRun = true;
+        Module4["calledRun"] = true;
+        if (ABORT)
+          return;
+        initRuntime();
+        readyPromiseResolve(Module4);
+        if (Module4["onRuntimeInitialized"])
+          Module4["onRuntimeInitialized"]();
+        postRun();
+      }
+      if (Module4["setStatus"]) {
+        Module4["setStatus"]("Running...");
+        setTimeout(function() {
+          setTimeout(function() {
+            Module4["setStatus"]("");
+          }, 1);
+          doRun();
+        }, 1);
+      } else {
+        doRun();
+      }
+    }
+    if (Module4["preInit"]) {
+      if (typeof Module4["preInit"] == "function")
+        Module4["preInit"] = [Module4["preInit"]];
+      while (Module4["preInit"].length > 0) {
+        Module4["preInit"].pop()();
+      }
+    }
+    run();
+    return Module4.ready;
+  };
+})();
+var metis_default = Module3;
+
+// src/METISWrapper.ts
+var METISWrapper = class {
+  static async load() {
+    if (!METISWrapper.METIS) {
+      METISWrapper.METIS = await metis_default();
+    }
+  }
+  static async partition(groups) {
+    await METISWrapper.load();
+    const TYPES = {
+      i8: { array: Int8Array, heap: "HEAP8" },
+      i16: { array: Int16Array, heap: "HEAP16" },
+      i32: { array: Int32Array, heap: "HEAP32" },
+      f32: { array: Float32Array, heap: "HEAPF32" },
+      f64: { array: Float64Array, heap: "HEAPF64" },
+      u8: { array: Uint8Array, heap: "HEAPU8" },
+      u16: { array: Uint16Array, heap: "HEAPU16" },
+      u32: { array: Uint32Array, heap: "HEAPU32" }
+    };
+    function transferNumberArrayToHeap(array, type) {
+      const typedArray = type.array.from(array);
+      const heapPointer = METISWrapper.METIS._malloc(
+        typedArray.length * typedArray.BYTES_PER_ELEMENT
+      );
+      METISWrapper.METIS[type.heap].set(typedArray, heapPointer >> 2);
+      return heapPointer;
+    }
+    function getDataFromHeapU8(address, type, length) {
+      return METISWrapper.METIS[type.heap].slice(address, address + length);
+    }
+    function getDataFromHeap(address, type, length) {
+      return METISWrapper.METIS[type.heap].slice(address >> 2, (address >> 2) + length);
+    }
+    const metis_part_graph_kway = METISWrapper.METIS.cwrap(
+      "metis_part_graph_kway",
+      "number",
+      [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ]
+    );
+    function _prepare_graph(adjacency) {
+      function assert2(condition) {
+        if (!condition)
+          throw Error("assert");
+      }
+      let xadj2 = [0];
+      let adjncy2 = [];
+      for (let i = 0; i < adjacency.length; i++) {
+        let adj = adjacency[i];
+        if (adj !== null && adj.length) {
+          assert2(Math.max(...adj) < adjacency.length);
+        }
+        adjncy2.push(...adj);
+        xadj2.push(adjncy2.length);
+      }
+      return [xadj2, adjncy2];
+    }
+    const [_xadj, _adjncy] = _prepare_graph(groups);
+    const ArrayType = Int32Array;
+    const TYPE = TYPES.i32;
+    const _xadj_ptr = transferNumberArrayToHeap(ArrayType.from(_xadj), TYPE);
+    const _adjncy_ptr = transferNumberArrayToHeap(ArrayType.from(_adjncy), TYPE);
+    const parts = new ArrayType(_xadj.length - 1);
+    const parts_ptr = transferNumberArrayToHeap(ArrayType.from(parts), TYPE);
+    const edgecut = new ArrayType(1);
+    const edgecut_ptr = transferNumberArrayToHeap(ArrayType.from(edgecut), TYPE);
+    const nvtxs = _xadj.length - 1;
+    const ncon = 1;
+    const xadj = _xadj_ptr;
+    const adjncy = _adjncy_ptr;
+    const vwgt = null;
+    const vsize = null;
+    const adjwgt = null;
+    const nparts = 10;
+    const tpwgts = null;
+    const ubvec = null;
+    const options = null;
+    const objval = edgecut_ptr;
+    const part = parts_ptr;
+    metis_part_graph_kway(
+      nvtxs,
+      ncon,
+      xadj,
+      adjncy,
+      vwgt,
+      vsize,
+      adjwgt,
+      nparts,
+      tpwgts,
+      ubvec,
+      options,
+      objval,
+      part
+    );
+    const parts_result = getDataFromHeap(parts_ptr, TYPE, parts.length);
+    const edge_cut_result = getDataFromHeap(edgecut_ptr, TYPE, edgecut.length);
+    const part_num = Math.max(...parts_result);
+    const parts_out = [];
+    for (let i = 0; i <= part_num; i++) {
+      const part2 = [];
+      for (let j = 0; j < parts_result.length; j++) {
+        if (parts_result[j] === i) {
+          part2.push(j);
+        }
+      }
+      parts_out.push(part2);
+    }
+    return parts_out;
+  }
+};
+
 // src/App.ts
 var App = class {
   constructor(canvas) {
@@ -25472,7 +24950,7 @@ var App = class {
     function dot(v1, v2) {
       return v1[0] * v2[0] + v1[1] * v2[1];
     }
-    return fract(Math.sin(dot(co, [12.9898, 78.233])) * 43758.5453);
+    return fract(Math.sin((co + 1) * 12.9898) * 43758.5453);
   }
   createSphere(radius, color, x, y, z) {
     let g = new SphereGeometry(radius);
@@ -25502,121 +24980,93 @@ var App = class {
     }
     this.scene.add(mesh);
   }
+  showMeshlets(meshlets, position) {
+    for (let i = 0; i < meshlets.length; i++) {
+      const meshlet_color = App.rand(i) * 16777215;
+      this.createMesh(meshlets[i].vertices, meshlets[i].indices, { color: meshlet_color, position });
+    }
+  }
   async processObj(objURL) {
-    const objLoader = new OBJLoader();
     OBJLoaderIndexed.load(objURL, async (objMesh) => {
       const objVertices = objMesh.vertices;
       const objIndices = objMesh.indices;
       this.createMesh(objVertices, objIndices, { opacity: 0.2, position: [-0.3, 0, 0] });
-      const meshlets = await MeshletCreator.build(objVertices, objIndices);
-      for (let i = 0; i < meshlets.length; i++) {
-        const meshlet = meshlets[i];
-        const meshlet_color = App.rand([i + 1, 0]) * 16777215;
-        this.createMesh(meshlet.vertices, meshlet.indices, { color: meshlet_color, position: [-0.15, 0, 0] });
+      async function step1_cluster(vertices, indices) {
+        return await MeshletCreator.build(vertices, indices);
       }
-      let groups = [[10, 11, 12, 16], [14, 22, 27, 28], [2, 9, 13, 32], [7, 8, 20, 31], [0, 1, 4, 6], [17, 18, 19, 21], [35, 36, 37, 38], [3, 5, 15, 29], [23, 30, 33, 34], [24, 25, 26]];
-      const grouppedMeshletGeometries = [];
-      for (let i = 0; i < groups.length; i++) {
-        const group = groups[i];
-        const groupMeshletGeometries = [];
-        for (let j = 0; j < group.length; j++) {
-          const meshletId = group[j];
-          const meshlet = meshlets[meshletId];
-          console.log(group, meshletId, meshlet);
-          let g2 = new BufferGeometry();
-          g2.setAttribute("position", new Float32BufferAttribute(meshlet.vertices, 3));
-          g2.setIndex(new Uint16BufferAttribute(meshlet.indices, 1));
-          groupMeshletGeometries.push(g2);
+      async function step2_group(meshlets) {
+        const meshletGrouper = new MeshletGrouper();
+        for (let i = 0; i < meshlets.length; i++) {
+          meshletGrouper.addMeshlet(meshlets[i]);
         }
-        const groupMeshlets = mergeBufferGeometries(groupMeshletGeometries);
-        grouppedMeshletGeometries.push(groupMeshlets);
+        const adjacencyList = meshletGrouper.buildAdjacentMeshletList(meshlets);
+        let adjacencyListArray = [];
+        for (let entry of adjacencyList) {
+          adjacencyListArray.push(entry[1]);
+        }
+        const groupPartitions = await METISWrapper.partition(adjacencyListArray);
+        const grouppedMeshlets2 = [];
+        for (let i = 0; i < groupPartitions.length; i++) {
+          const group = groupPartitions[i];
+          const groupMeshlets = [];
+          for (let j = 0; j < group.length; j++) {
+            const meshletId = group[j];
+            const meshlet = meshlets[meshletId];
+            groupMeshlets.push(meshlet);
+          }
+          grouppedMeshlets2.push(groupMeshlets);
+        }
+        return grouppedMeshlets2;
       }
-      for (let i = 0; i < grouppedMeshletGeometries.length; i++) {
-        const grouppedMeshletGeometry = grouppedMeshletGeometries[i];
-        const vertices = grouppedMeshletGeometry.getAttribute("position").array;
-        const indices = grouppedMeshletGeometry.getIndex().array;
-        const meshlet_color = App.rand([i + 1, 0]) * 16777215;
-        this.createMesh(vertices, indices, { color: meshlet_color });
+      async function step3_merge(groups) {
+        const grouppedMeshlets2 = [];
+        for (let i = 0; i < groups.length; i++) {
+          const groupMeshlets = groups[i];
+          const mergedMeshlets2 = MeshletMerger.merge(groupMeshlets);
+          grouppedMeshlets2.push(mergedMeshlets2);
+        }
+        return grouppedMeshlets2;
       }
-      let simplifiedMeshletGroup = [];
-      for (let i = 0; i < grouppedMeshletGeometries.length; i++) {
-        const grouppedMeshletGeometry = grouppedMeshletGeometries[i];
-        const meshlet_color = App.rand([i + 1, 0]) * 16777215;
-        const m = new MeshBasicMaterial({
-          wireframe: true,
-          side: 0,
-          color: meshlet_color
-        });
-        const inputMesh = new Mesh(grouppedMeshletGeometry, m);
-        const simplifiedGeometry = await SimplifyModifierV4.simplify(inputMesh, 0.5);
-        simplifiedMeshletGroup.push(simplifiedGeometry.geometry);
-        const outputMesh = new Mesh(simplifiedGeometry.geometry, m);
-        outputMesh.position.set(0.15, 0, 0);
-        this.scene.add(outputMesh);
+      async function step4_simplify(meshlets) {
+        let simplifiedMeshletGroup = [];
+        for (let i = 0; i < meshlets.length; i++) {
+          const grouppedMeshlet = meshlets[i];
+          const simplifiedGroup = await SimplifyModifierV4.simplify(grouppedMeshlet, 0.5);
+          simplifiedMeshletGroup.push(simplifiedGroup);
+        }
+        ;
+        return simplifiedMeshletGroup;
       }
-      ;
-      for (let i = 0; i < 1; i++) {
-        const simplifiedGroup = simplifiedMeshletGroup[i];
-        const geometry = mergeVertices(simplifiedGroup);
-        console.log("simplifiedGroup", simplifiedGroup, geometry);
-        const vertices = geometry.getAttribute("position").array;
-        const indices = geometry.getIndex().array;
-        const simplifiedGroupMeshlets = await MeshletCreator.build(vertices, indices);
-        console.log(simplifiedGroupMeshlets);
-        for (let j = 0; j < simplifiedGroupMeshlets.length; j++) {
-          const meshlet = simplifiedGroupMeshlets[j];
-          const meshlet_color = App.rand([j + 1, 0]) * 16777215;
-          this.createMesh(meshlet.vertices, meshlet.indices, { color: meshlet_color, position: [0.3, 0, 0] });
+      async function step5_split(meshlets) {
+        let clusterizedMeshlets2 = [];
+        for (let i = 0; i < meshlets.length; i++) {
+          const meshlet = meshlets[i];
+          const clusterizedMeshlet = await step1_cluster(meshlet.vertices, meshlet.indices);
+          clusterizedMeshlets2.push(clusterizedMeshlet);
+        }
+        return clusterizedMeshlets2;
+      }
+      const clusterizedMeshlets = await step1_cluster(objVertices, objIndices);
+      this.showMeshlets(clusterizedMeshlets, [-0.15, 0, 0]);
+      const grouppedMeshlets = await step2_group(clusterizedMeshlets);
+      for (let i = 0; i < grouppedMeshlets.length; i++) {
+        const meshlet_color = App.rand(i) * 16777215;
+        for (let j = 0; j < grouppedMeshlets[i].length; j++) {
+          const meshlet = grouppedMeshlets[i][j];
+          this.createMesh(meshlet.vertices, meshlet.indices, { color: meshlet_color });
         }
       }
-      return;
-      console.log(meshletGrouper);
-      for (let i = 0; i < 1; i++) {
-        const meshlet = meshlets[i];
-        let g2 = new BufferGeometry();
-        g2.setAttribute("position", new Float32BufferAttribute(meshlet.vertices, 3));
-        g2.setIndex(new Uint16BufferAttribute(meshlet.indices, 1));
-        const meshlet_color = App.rand([i + 1, 0]) * 16777215;
-        const m = new MeshBasicMaterial({
-          wireframe: true,
-          side: 0,
-          color: meshlet_color
-        });
-        const mesh = new Mesh(g2, m);
-        this.scene.add(mesh);
-      }
-      const borders = meshletGrouper.getBorderVertices(meshlets[0]);
-      console.log(borders);
-      const adjacentMeshlets = meshletGrouper.getAdjacentMeshlets(meshlets[0]);
-      for (let i = 0; i < adjacentMeshlets.length; i++) {
-        const meshlet = adjacentMeshlets[i];
-        let g2 = new BufferGeometry();
-        g2.setAttribute("position", new Float32BufferAttribute(meshlet.vertices, 3));
-        g2.setIndex(new Uint16BufferAttribute(meshlet.indices, 1));
-        const meshlet_color = App.rand([i + 1, 0]) * 16777215;
-        const m = new MeshBasicMaterial({
-          wireframe: true,
-          side: 0,
-          color: meshlet_color
-        });
-        const mesh = new Mesh(g2, m);
-        this.scene.add(mesh);
-      }
-      console.log(adjacentMeshlets);
-      const g = new SphereGeometry(1e-3);
-      for (let i = 0; i < borders.length; i++) {
-        const borderVertexId = borders[i];
-        const x = meshlets[0].vertices[borderVertexId + 0];
-        const y = meshlets[0].vertices[borderVertexId + 1];
-        const z = meshlets[0].vertices[borderVertexId + 2];
-        const m = new MeshBasicMaterial({
-          wireframe: true,
-          side: 0,
-          color: "red"
-        });
-        const mesh = new Mesh(g, m);
-        mesh.position.set(x, y, z);
-        this.scene.add(mesh);
+      const mergedMeshlets = await step3_merge(grouppedMeshlets);
+      this.showMeshlets(mergedMeshlets, [0.15, 0, 0]);
+      const simplifiedMeshlets = await step4_simplify(mergedMeshlets);
+      this.showMeshlets(simplifiedMeshlets, [0.3, 0, 0]);
+      const splitMeshlets = await step5_split(simplifiedMeshlets);
+      for (let i = 0; i < splitMeshlets.length; i++) {
+        for (let j = 0; j < splitMeshlets[i].length; j++) {
+          const meshlet_color = App.rand(i + j) * 16777215;
+          const meshlet = splitMeshlets[i][j];
+          this.createMesh(meshlet.vertices, meshlet.indices, { color: meshlet_color, position: [0.45, 0, 0] });
+        }
       }
     });
   }

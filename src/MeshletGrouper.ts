@@ -44,7 +44,7 @@ export class MeshletGrouper {
         }
     }
 
-    public getBorderVertices(meshlet: Meshlet): number[] {
+    public getSharedVertices(meshlet: Meshlet): number[] {
         let borderVertexIds: number[] = [];
         for (let i = 0; i < meshlet.vertices.length; i+=3) {
             const vertex_id = MeshletGrouper.getVertexKey(meshlet.vertices[i + 0], meshlet.vertices[i + 1], meshlet.vertices[i + 2]);
@@ -60,7 +60,7 @@ export class MeshletGrouper {
     public getAdjacentMeshlets(meshlet: Meshlet): Meshlet[] {
         let adjacentMeshlets: Meshlet[] = [];
         
-        const borderVertexIds = this.getBorderVertices(meshlet);
+        const borderVertexIds = this.getSharedVertices(meshlet);
         
         for (let i = 0; i < borderVertexIds.length; i++) {
             const vertex_id = borderVertexIds[i];

@@ -1,22 +1,15 @@
 import * as THREE from "three";
 
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 
 import { BetterStats } from "./BetterStats";
-
-
-
-import { MeshletBuilder, MeshoptMeshlet } from "./utils/MeshletBuilder";
 
 import { SimplifyModifierV4 } from "./SimplifyModifierV4";
 import { MeshletGrouper } from "./MeshletGrouper";
 import { OBJLoaderIndexed } from "./OBJLoaderIndexed";
-import { _Magic_Rd, Face, Vertex } from "./magic";
-import { MeshletUtils } from "./MeshletEdgeFinder";
-import { mergeBufferGeometries, mergeVertices, toTrianglesDrawMode } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { MeshletBuilder_wasm } from "./utils/MeshletBuilder_wasm";
 import { MeshletCreator } from "./MeshletCreator";
+import { MeshletMerger } from "./MeshletMerger";
+import { METISWrapper } from "./METISWrapper";
 
 export interface Meshlet {
     vertices: number[],
@@ -38,7 +31,7 @@ export class App {
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
 
-        this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas });
+        this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas});
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(32, this.canvas.width / this.canvas.height, 0.01, 10000);
         this.camera.position.z = 1;
@@ -52,7 +45,7 @@ export class App {
     }
 
     // Helpers
-    private static rand(co: number[]) {
+    private static rand(co: number) {
         function fract(n) {
             return n % 1;
         }
@@ -61,7 +54,7 @@ export class App {
             return v1[0] * v2[0] + v1[1] * v2[1];
         }
 
-        return fract(Math.sin(dot(co, [12.9898, 78.233])) * 43758.5453);
+        return fract(Math.sin((co + 1) * 12.9898) * 43758.5453);
     }
 
     private createSphere(radius, color, x, y, z) {
@@ -97,8 +90,14 @@ export class App {
         this.scene.add(mesh);
     }
 
+    private showMeshlets(meshlets: Meshlet[], position: number[]) {
+        for (let i = 0; i < meshlets.length; i++) {
+            const meshlet_color = App.rand(i) * 0xffffff;
+            this.createMesh(meshlets[i].vertices, meshlets[i].indices, {color: meshlet_color, position: position});
+        }
+    }
+
     public async processObj(objURL: string) {
-        const objLoader = new OBJLoader();
         OBJLoaderIndexed.load(objURL, async (objMesh) => {
             const objVertices = objMesh.vertices;
             const objIndices = objMesh.indices;
@@ -107,194 +106,109 @@ export class App {
             this.createMesh(objVertices, objIndices, {opacity: 0.2, position: [-0.3, 0, 0]});
 
 
-
-
-            // Clusterize - Cluster == Meshlet (in nanite paper)
-            const meshlets = await MeshletCreator.build(objVertices, objIndices);
-
-            for (let i = 0; i < meshlets.length; i++) {
-                const meshlet = meshlets[i];
-
-                // Each meshlet
-                const meshlet_color = App.rand([i + 1, 0]) * 0xffffff;
-                this.createMesh(meshlet.vertices, meshlet.indices, {color: meshlet_color, position: [-0.15, 0, 0]});
+            async function step1_cluster(vertices: Float32Array, indices: Uint32Array): Promise<Meshlet[]> {
+                return await MeshletCreator.build(vertices, indices);
             }
 
-            // // Group
-            // const meshletGrouper = new MeshletGrouper();
-            // for (let i = 0; i < meshlets.length; i++) {
-            //     const meshlet = meshlets[i];
-            //     meshletGrouper.addMeshlet(meshlet);
-            // }
-
-            // const adjacencyList = meshletGrouper.buildAdjacentMeshletList(meshlets);
-            // console.log(adjacencyList)
-
-            // let t: number[][] = []
-            // for (let a of adjacencyList) {
-            //     t.push(a[1]);
-            // }
-            // console.log(t);
-            // return;
-
-
-            // Test graph-paritioning
-            // Metis output
-            let groups = [[10, 11, 12, 16], [14, 22, 27, 28], [2, 9, 13, 32], [7, 8, 20, 31], [0, 1, 4, 6], [17, 18, 19, 21], [35, 36, 37, 38], [3, 5, 15, 29], [23, 30, 33, 34], [24, 25, 26]];
-
-            // Merge
-            const grouppedMeshletGeometries: THREE.BufferGeometry[] = [];
-            for (let i = 0; i < groups.length; i++) {
-                const group = groups[i];
-
-                const groupMeshletGeometries: THREE.BufferGeometry[] = [];
-
-                for (let j = 0; j < group.length; j++) {
-                    const meshletId = group[j];
-                    const meshlet = meshlets[meshletId];
-                    console.log(group, meshletId, meshlet);
-
-                    let g = new THREE.BufferGeometry();
-                    g.setAttribute("position", new THREE.Float32BufferAttribute(meshlet.vertices, 3));
-                    g.setIndex(new THREE.Uint16BufferAttribute(meshlet.indices, 1));
-
-                    groupMeshletGeometries.push(g);
+            async function step2_group(meshlets: Meshlet[]): Promise<Meshlet[][]> {
+                // Add meshlets to grouper, this allows for border checks
+                const meshletGrouper = new MeshletGrouper();
+                for (let i = 0; i < meshlets.length; i++) {
+                    meshletGrouper.addMeshlet(meshlets[i]);
                 }
 
-                // TODO: Get rid of threejs, isolate mergeBufferGeometries and
-                // use vertices and indices directly
-                const groupMeshlets = mergeBufferGeometries(groupMeshletGeometries);
-                grouppedMeshletGeometries.push(groupMeshlets);
+                // Get adjacent meshlets by checking shared vertices
+                const adjacencyList = meshletGrouper.buildAdjacentMeshletList(meshlets);
+
+                let adjacencyListArray: number[][] = [];
+                for (let entry of adjacencyList) {
+                    adjacencyListArray.push(entry[1]);
+                }
+
+                // Use metis to partition the meshlets into groups
+                const groupPartitions = await METISWrapper.partition(adjacencyListArray);
+                // Aggregate
+                const grouppedMeshlets: Meshlet[][] = [];
+                for (let i = 0; i < groupPartitions.length; i++) {
+                    const group = groupPartitions[i];
+                    const groupMeshlets: Meshlet[] = [];
+
+                    for (let j = 0; j < group.length; j++) {
+                        const meshletId = group[j];
+                        const meshlet = meshlets[meshletId];
+                        groupMeshlets.push(meshlet);
+                    }
+                    grouppedMeshlets.push(groupMeshlets);
+                }
+                return grouppedMeshlets;
             }
 
-            // Show grouped meshlets
-            for (let i = 0; i < grouppedMeshletGeometries.length; i++) {
-                const grouppedMeshletGeometry = grouppedMeshletGeometries[i];
-                const vertices = grouppedMeshletGeometry.getAttribute("position").array;
-                const indices = grouppedMeshletGeometry.getIndex().array;
-                const meshlet_color = App.rand([i + 1, 0]) * 0xffffff;
+            // groups = metis output
+            async function step3_merge(groups: Meshlet[][]): Promise<Meshlet[]> {
+                const grouppedMeshlets: Meshlet[] = [];
+                for (let i = 0; i < groups.length; i++) {
+                    const groupMeshlets = groups[i];
+                    const mergedMeshlets = MeshletMerger.merge(groupMeshlets);
+                    grouppedMeshlets.push(mergedMeshlets);
+                }
 
-                this.createMesh(vertices, indices, {color: meshlet_color});
-
+                return grouppedMeshlets;
             }
 
-            // Simplify
-            let simplifiedMeshletGroup: THREE.BufferGeometry[] = [];
+            async function step4_simplify(meshlets: Meshlet[]): Promise<Meshlet[]> {
+                let simplifiedMeshletGroup: Meshlet[] = [];
 
-            for (let i = 0; i < grouppedMeshletGeometries.length; i++) {
-                const grouppedMeshletGeometry = grouppedMeshletGeometries[i];
-                const meshlet_color = App.rand([i + 1, 0]) * 0xffffff;
-                const m = new THREE.MeshBasicMaterial({
-                    wireframe: true,
-                    side: 0,
-                    color: meshlet_color,
-                });
-                const inputMesh = new THREE.Mesh(grouppedMeshletGeometry, m);
-                const simplifiedGeometry = await SimplifyModifierV4.simplify(inputMesh, 0.5) as THREE.Mesh;
-                simplifiedMeshletGroup.push(simplifiedGeometry.geometry);
+                for (let i = 0; i < meshlets.length; i++) {
+                    const grouppedMeshlet = meshlets[i];
+                    const simplifiedGroup = await SimplifyModifierV4.simplify(grouppedMeshlet, 0.5);
+                    simplifiedMeshletGroup.push(simplifiedGroup);
+                };
+                return simplifiedMeshletGroup;
+            }
 
-                const outputMesh = new THREE.Mesh(simplifiedGeometry.geometry, m);
-                outputMesh.position.set(0.15, 0, 0);
-                this.scene.add(outputMesh);
-            };
+            async function step5_split(meshlets: Meshlet[]): Promise<Meshlet[][]> {
+                // Same as step1
+                let clusterizedMeshlets: Meshlet[][] = [];
+                for (let i = 0; i < meshlets.length; i++) {
+                    const meshlet = meshlets[i];
+                    const clusterizedMeshlet = await step1_cluster(meshlet.vertices, meshlet.indices);
+                    clusterizedMeshlets.push(clusterizedMeshlet);
+                }
+
+                return clusterizedMeshlets;
+            }
+
+            const clusterizedMeshlets = await step1_cluster(objVertices, objIndices);
+            this.showMeshlets(clusterizedMeshlets, [-0.15, 0, 0]);
 
 
-            for (let i = 0; i < 1; i++) {
-                const simplifiedGroup = simplifiedMeshletGroup[i];
-                const geometry = mergeVertices(simplifiedGroup);
-                console.log("simplifiedGroup", simplifiedGroup, geometry);
-                const vertices = geometry.getAttribute("position").array;
-                const indices = geometry.getIndex().array;
-                const simplifiedGroupMeshlets = await MeshletCreator.build(vertices, indices);
+            const grouppedMeshlets = await step2_group(clusterizedMeshlets);
+            // Show groupped meshlets, note that they are not merged yet
+            for (let i = 0; i < grouppedMeshlets.length; i++) {
+                const meshlet_color = App.rand(i) * 0xffffff;
 
-                console.log(simplifiedGroupMeshlets)
-
-                for (let j = 0; j < simplifiedGroupMeshlets.length; j++) {
-                    const meshlet = simplifiedGroupMeshlets[j];
-                    const meshlet_color = App.rand([j + 1, 0]) * 0xffffff;
-                    this.createMesh(meshlet.vertices, meshlet.indices, {color: meshlet_color, position: [0.3, 0, 0]});
+                for (let j = 0; j < grouppedMeshlets[i].length; j++) {
+                    const meshlet = grouppedMeshlets[i][j];
+                    this.createMesh(meshlet.vertices, meshlet.indices, {color: meshlet_color});
                 }
             }
 
+            const mergedMeshlets = await step3_merge(grouppedMeshlets);
+            this.showMeshlets(mergedMeshlets, [0.15, 0, 0]);
 
+            const simplifiedMeshlets = await step4_simplify(mergedMeshlets);
+            this.showMeshlets(simplifiedMeshlets, [0.3, 0, 0]);
 
-            // const gm: Meshlet = {
-            //     vertices: groupMeshlet.getAttribute("position").array,
-            //     vertex_count: groupMeshlet.getAttribute("position").array.length / 3,
-            //     indices: groupMeshlet.getIndex().array,
-            //     index_count: groupMeshlet.getIndex().array.length
-            // }
-            // const boundaryVertexIds = MeshletUtils.getBoundary(gm);
-            // console.log("boundaryVertexIds.length", boundaryVertexIds.length);
+            const splitMeshlets = await step5_split(simplifiedMeshlets);
 
-            // for (let i = 0; i < boundaryVertexIds.length; i++) {
-            //     const v = boundaryVertexIds[i];
-            //     const x = vertices[v * 3 + 0];
-            //     const y = vertices[v * 3 + 1];
-            //     const z = vertices[v * 3 + 2];
-            //     createSphere(0.001, "red", x, y, z);
-            // }
-
-            return;
-
-            console.log(meshletGrouper)
-
-            for (let i = 0; i < 1; i++) {
-                const meshlet = meshlets[i];
-
-                let g = new THREE.BufferGeometry();
-                g.setAttribute("position", new THREE.Float32BufferAttribute(meshlet.vertices, 3));
-                g.setIndex(new THREE.Uint16BufferAttribute(meshlet.indices, 1));
-
-                const meshlet_color = App.rand([i + 1, 0]) * 0xffffff;
-                const m = new THREE.MeshBasicMaterial({
-                    wireframe: true,
-                    side: 0,
-                    color: meshlet_color,
-                });
-                const mesh = new THREE.Mesh(g, m);
-
-                this.scene.add(mesh);
-            }
-
-            const borders = meshletGrouper.getBorderVertices(meshlets[0]);
-            console.log(borders);
-
-            const adjacentMeshlets = meshletGrouper.getAdjacentMeshlets(meshlets[0]);
-            for (let i = 0; i < adjacentMeshlets.length; i++) {
-                const meshlet = adjacentMeshlets[i];
-                let g = new THREE.BufferGeometry();
-                g.setAttribute("position", new THREE.Float32BufferAttribute(meshlet.vertices, 3));
-                g.setIndex(new THREE.Uint16BufferAttribute(meshlet.indices, 1));
-
-                const meshlet_color = App.rand([i + 1, 0]) * 0xffffff;
-                const m = new THREE.MeshBasicMaterial({
-                    wireframe: true,
-                    side: 0,
-                    color: meshlet_color,
-                });
-                const mesh = new THREE.Mesh(g, m);
-
-                this.scene.add(mesh);
-            }
-            console.log(adjacentMeshlets);
-
-            const g = new THREE.SphereGeometry(0.001);
-            for (let i = 0; i < borders.length; i++) {
-                const borderVertexId = borders[i];
-                const x = meshlets[0].vertices[borderVertexId + 0];
-                const y = meshlets[0].vertices[borderVertexId + 1];
-                const z = meshlets[0].vertices[borderVertexId + 2];
-
-                const m = new THREE.MeshBasicMaterial({
-                    wireframe: true,
-                    side: 0,
-                    color: "red",
-                });
-                const mesh = new THREE.Mesh(g, m);
-                mesh.position.set(x, y, z);
-
-                this.scene.add(mesh);
+            // Show split meshlets, note that they are not merged yet
+            for (let i = 0; i < splitMeshlets.length; i++) {
+                
+                for (let j = 0; j < splitMeshlets[i].length; j++) {
+                    const meshlet_color = App.rand(i + j) * 0xffffff;
+                    const meshlet = splitMeshlets[i][j];
+                    this.createMesh(meshlet.vertices, meshlet.indices, {color: meshlet_color, position: [0.45, 0, 0]});
+                }
             }
         })
     }

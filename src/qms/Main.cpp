@@ -17,23 +17,8 @@
 
 #include "Simplify.h"
 #include <stdio.h>
-#include <time.h>  // clock_t, clock, CLOCKS_PER_SEC
 
-void showHelp(const char * argv[]) {
-    const char *cstr = (argv[0]);
-    printf("Usage: %s <input> <output> <ratio> <agressiveness)\n", cstr);
-    printf(" Input: name of existing OBJ format mesh\n");
-    printf(" Output: name for decimated OBJ format mesh\n");
-    printf(" Ratio: (default = 0.5) for example 0.2 will decimate 80%% of triangles\n");
-    printf(" Agressiveness: (default = 7.0) faster or better decimation\n");
-    printf("Examples :\n");
-#if defined(_WIN64) || defined(_WIN32)
-    printf("  %s c:\\dir\\in.obj c:\\dir\\out.obj 0.2\n", cstr);
-#else
-    printf("  %s ~/dir/in.obj ~/dir/out.obj 0.2\n", cstr);
-#endif
-} //showHelp()
-
+extern "C" {
 bool is_extension(const char* file_path, const char* extension) {
     char file_extension[3];
 
@@ -50,22 +35,11 @@ bool is_obj(const char* file_path) {
     return is_extension(file_path, "obj");
 }
 
-bool is_stl(const char* file_path) {
-    return is_extension(file_path, "stl");
-}
-
-int simplify(const char* file_path, const char* export_path, float reduceFraction, float agressiveness) {
-
-    printf("Mesh Simplification (C)2014 by Sven Forstmann in 2014, MIT License (%zu-bit)\n", sizeof(size_t)*8);
-
+int simplify_obj(const char* file_path, const char* export_path, float reduceFraction, float agressiveness) {
     if (is_obj(file_path)) {
         Simplify::load_obj(file_path);
-        printf("loading obj\n");
     }
-    else if (is_stl(file_path)) {
-        printf("loading stl\n");
-        // Simplify::load_stl(file_path);
-    } else {
+    else {
         printf("file is not obj or stl %s\n", file_path);
         return EXIT_FAILURE;
     }
@@ -88,8 +62,6 @@ int simplify(const char* file_path, const char* export_path, float reduceFractio
         printf("Object will not survive such extreme decimation\n");
         return EXIT_FAILURE;
     }
-    clock_t start = clock();
-    printf("Input: %zu vertices, %zu triangles (target %d)\n", Simplify::vertices.size(), Simplify::triangles.size(), target_count);
     int startSize = Simplify::triangles.size();
 
     int update_rate = 5;
@@ -113,51 +85,176 @@ int simplify(const char* file_path, const char* export_path, float reduceFractio
     }
 
     if (is_obj(export_path)) {
-        printf("exporting obj\n");
         Simplify::write_obj(export_path);
     }
-    else if (is_stl(export_path)) {
-        printf("exporting stl\n");
-        // Simplify::write_stl(export_path);
-    } else {
+    else {
         printf("export file is not obj or stl %s\n", export_path);
         return EXIT_FAILURE;
     }
 
-    printf("Output: %zu vertices, %zu triangles (%f reduction; %.4f sec)\n",Simplify::vertices.size(), Simplify::triangles.size()
-        , (float)Simplify::triangles.size()/ (float) startSize  , ((float)(clock()-start))/CLOCKS_PER_SEC );
     return EXIT_SUCCESS;
 }
 
-#ifdef __EMSCRIPTEN__
+int simplify(float *vertices, int vertex_count, int *faces, int face_count, float reduceFraction, float agressiveness, float *vertices_output, unsigned int *faces_output) {
 
-extern "C" {
-int simplify(const char* file_path, float reduceFraction, const char* export_path) {
-    printf("Going to simplify %s\n", file_path);
-    return simplify(file_path, export_path, reduceFraction, 7.0);// aggressive
+    Simplify::vertices.clear();
+    // std::vector<std::vector<double> > _vertices;
+
+    for (size_t i = 0; i < vertex_count; i+=3)
+    {
+        // std::vector<double> vertex;
+        // vertex.push_back(vertices[i + 0]);
+        // vertex.push_back(vertices[i + 1]);
+        // vertex.push_back(vertices[i + 2]);
+        // _vertices.push_back(vertex);
+
+
+        Simplify::Vertex v;
+        v.p.x = vertices[i + 0];
+        v.p.y = vertices[i + 1];
+        v.p.z = vertices[i + 2];
+        Simplify::vertices.push_back(v);
+        // printf("raw v[%i]: x: %f, y: %f, z: %f\n", i, vertex[0], vertex[1], vertex[2]);
+        // printf("v %f %f %f\n", vertex[0], vertex[1], vertex[2]);
+    }
+
+    Simplify::triangles.clear();
+    // std::vector<std::vector<int> > _faces;
+
+    for (size_t i = 0; i < face_count; i+=3)
+    {
+        // std::vector<int> face;
+        // face.push_back(faces[i + 0]);
+        // face.push_back(faces[i + 1]);
+        // face.push_back(faces[i + 2]);
+        // _faces.push_back(face);
+
+
+        Simplify::Triangle t;
+        t.attr = 0;
+        t.material = -1;
+        t.v[0] = faces[i + 0];
+        t.v[1] = faces[i + 1];
+        t.v[2] = faces[i + 2];
+
+        Simplify::triangles.push_back(t);
+
+        // printf("f %i %i %i\n", face[0], face[1], face[2]);
+    }
+    
+
+    // Simplify::setMeshFromExt(_vertices, _faces);
+
+    if ((Simplify::triangles.size() < 3) || (Simplify::vertices.size() < 3)) {
+        printf("triangles size or vertices size less than 3\n");
+        return EXIT_FAILURE;
+    }
+
+    int target_count =  Simplify::triangles.size() >> 1;
+
+    if (reduceFraction > 1.0) reduceFraction = 1.0; //lossless only
+    if (reduceFraction <= 0.0) {
+        printf("Ratio must be BETWEEN zero and one.\n");
+        return EXIT_FAILURE;
+    }
+    target_count = round((float)Simplify::triangles.size() * reduceFraction);
+
+    if (target_count < 4) {
+        printf("Object will not survive such extreme decimation\n");
+        return EXIT_FAILURE;
+    }
+    int startSize = Simplify::triangles.size();
+
+    int update_rate = 5;
+    // double agressiveness = 7;
+    bool verbose = false;
+    int max_iterations = 100;
+    double alpha = 0.000000001;
+    int K = 3;
+    bool lossless = false;
+    double threshold_lossless = 0.0001;
+    bool preserve_border = true;
+    
+    Simplify::simplify_mesh(target_count, update_rate, agressiveness,
+					   verbose, max_iterations, alpha,
+					   K, lossless, threshold_lossless,
+					   preserve_border);
+    //Simplify::simplify_mesh_lossless( false);
+    if ( Simplify::triangles.size() >= startSize) {
+        printf("Unable to reduce mesh.\n");
+        return EXIT_FAILURE;
+    }
+
+
+    for (size_t i = 0, j = 0; i < Simplify::vertices.size(); i++, j+=3) {
+        vertices_output[j + 0] = Simplify::vertices[i].p.x;
+        vertices_output[j + 1] = Simplify::vertices[i].p.y;
+        vertices_output[j + 2] = Simplify::vertices[i].p.z;
+        // printf("v %g %g %g\n", Simplify::vertices[i].p.x, Simplify::vertices[i].p.y, Simplify::vertices[i].p.z);
+    }
+    
+    for (size_t i = 0, j = 0; i < Simplify::triangles.size(); i++, j+=3) {
+        if (Simplify::triangles[i].deleted) continue;
+
+        faces_output[j + 0] = Simplify::triangles[i].v[0];
+        faces_output[j + 1] = Simplify::triangles[i].v[1];
+        faces_output[j + 2] = Simplify::triangles[i].v[2];
+        // printf("f %d %d %d\n", Simplify::triangles[i].v[0], Simplify::triangles[i].v[1], Simplify::triangles[i].v[2]);
+    }
+
+
+
+    return EXIT_SUCCESS;
+
+
+    // // if (is_obj(export_path)) {
+    // //     Simplify::write_obj(export_path);
+    // // }
+    // // else {
+    // //     printf("export file is not obj or stl %s\n", export_path);
+    // //     return EXIT_FAILURE;
+    // // }
+
+    // return EXIT_SUCCESS;
+}
+
+size_t get_simplified_vertex_count() {
+    return Simplify::vertices.size();
+}
+
+size_t get_simplified_triangle_count() {
+    return Simplify::triangles.size();
 }
 }
 
-#else
+// #ifdef __EMSCRIPTEN__
 
-int main(int argc, const char * argv[]) {
-    if (argc < 3) {
-        showHelp(argv);
-        return EXIT_SUCCESS;
-    }
+// extern "C" {
+// int simplify(const char* file_path, float reduceFraction, const char* export_path) {
+//     return simplify(file_path, export_path, reduceFraction, 7.0);// aggressive
+// }
+// }
 
-    const char* file_path = argv[1];
-    const char* export_path = argv[2];
-    float reduceFraction = 0.5;
-    if (argc > 3) {
-        reduceFraction = atof(argv[3]);
-    }
+// #else
 
-    float agressiveness = 7.0;
-    if (argc > 4) {
-        agressiveness = atof(argv[4]);
-    }
-    return simplify(file_path, export_path, reduceFraction, agressiveness);
-}
+// int main(int argc, const char * argv[]) {
+//     if (argc < 3) {
+//         printf("Need to provide at least 2 args")
+//         return EXIT_SUCCESS;
+//     }
 
-#endif
+//     const char* file_path = argv[1];
+//     const char* export_path = argv[2];
+//     float reduceFraction = 0.5;
+//     if (argc > 3) {
+//         reduceFraction = atof(argv[3]);
+//     }
+
+//     float agressiveness = 7.0;
+//     if (argc > 4) {
+//         agressiveness = atof(argv[4]);
+//     }
+//     return simplify(file_path, export_path, reduceFraction, agressiveness);
+// }
+
+// #endif

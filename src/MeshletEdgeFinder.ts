@@ -15,7 +15,7 @@ interface Ref {
     tvertex: number;
 };
 
-export class MeshletUtils {
+export class MeshletEdgeFinder {
     public static getBoundary(meshlet: Meshlet) {
         let vertices: Vertex[] = [];
         let triangles: Triangle[] = [];

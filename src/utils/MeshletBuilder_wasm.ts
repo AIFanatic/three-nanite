@@ -83,7 +83,6 @@ export class MeshletBuilder_wasm {
         const vertex_positions_stride = 3 * Float32Array.BYTES_PER_ELEMENT;
 
         const max_meshlets = meshopt_buildMeshletsBound(indices.length, max_vertices, max_triangles);
-        console.log("max_meshlets", max_meshlets);
 
         const meshlets = new Uint32Array(max_meshlets * 4);
         const meshlet_vertices = new Uint32Array(max_meshlets * max_vertices);

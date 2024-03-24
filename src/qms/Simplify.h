@@ -1044,6 +1044,7 @@ namespace Simplify
 							   &v.p.x, &v.p.y, &v.p.z) == 3)
 					{
 						vertices.push_back(v);
+						// printf("v %f %f %f\n", v.p.x, v.p.y, v.p.z);
 					}
 			}
 			int integers[9];
@@ -1090,6 +1091,7 @@ namespace Simplify
 					t.v[0] = integers[0] - 1 - vertex_cnt;
 					t.v[1] = integers[1] - 1 - vertex_cnt;
 					t.v[2] = integers[2] - 1 - vertex_cnt;
+					// printf("f %d %d %d\n", t.v[0], t.v[1], t.v[2]);
 					t.attr = 0;
 
 					if (process_uv && has_uv)

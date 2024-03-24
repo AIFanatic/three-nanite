@@ -1,9 +1,6 @@
 import * as SimplifyModifierModule from "./qms/qms.js";
 
-import * as THREE from "three";
-import { OBJExporter } from "three/examples/jsm/exporters/OBJExporter.js";
-import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
-import { OBJLoaderIndexed } from "./OBJLoaderIndexed.js";
+import { Meshlet } from "./App.js";
 
 export class SimplifyModifierV4 {
     private static SimplifyModifier;
@@ -14,41 +11,110 @@ export class SimplifyModifierV4 {
         }
     }
 
-    public static async simplify(obj: THREE.Mesh, percentage: number) {
+    public static async simplify(meshlet: Meshlet, percentage: number): Promise<Meshlet> {
         await SimplifyModifierV4.load();
 
-        try {
-            this.SimplifyModifier.FS_unlink("test.obj");
-        } catch (error) {}
+        // return;
 
-        const exporter = new OBJExporter();
-        const objString = exporter.parse(obj);
 
-        const enc = new TextEncoder(); // always utf-8
-        const data = enc.encode(objString);
+        // int simplify(
+        //     std::vector<std::vector<double> > *vertices,
+        //     std::vector<std::vector<int> > *faces,
+        //     float reduceFraction,
+        //     float agressiveness
+        // )
 
-        // var data = new Uint8Array(fr.result);
-        this.SimplifyModifier.FS_createDataFile(".", "test.obj", data, true, true);
+        // int simplify(
+        //     double *vertices,
+        //     int vertex_count,
+        //     int *faces,
+        //     int face_count,
+        //     float reduceFraction,
+        //     float agressiveness
+        // )
 
-        this.SimplifyModifier.ccall("simplify", // c function name
-            undefined, // return
-            ["string", "number", "string"], // param
-            ["test.obj", percentage, "simplify_test.obj"]
+        const simplify = this.SimplifyModifier.cwrap(
+            'simplify',
+            'number',                 // The return type
+            [
+                'number',
+                'number',
+                'number',
+                'number',
+                'number',
+                'number',
+
+                'number',
+                'number'
+            ]
         );
 
-        let out_bin = this.SimplifyModifier.FS_readFile("simplify_test.obj");
-        let file = new Blob([out_bin], {type: 'application/sla'});
-        const outputObjString = await file.text();
+        const simplified_vertex_count_fn = this.SimplifyModifier.cwrap(
+            'get_simplified_vertex_count',
+            'number', []
+        );
 
-        const objLoader = new OBJLoader();
-        const outputObj2 = objLoader.parse(outputObjString).children[0];
-        return outputObj2;
+        const simplified_triangle_count_fn = this.SimplifyModifier.cwrap(
+            'get_simplified_triangle_count',
+            'number', []
+        );
 
-        // const outputObj = OBJLoaderIndexed.parse(outputObjString);
-        // const g = new THREE.BufferGeometry();
-        // g.setAttribute("position", new THREE.Float32BufferAttribute(outputObj.vertices, 3));
-        // g.setIndex(new THREE.Uint32BufferAttribute(outputObj.indices, 1));
-        // const mat = new THREE.MeshBasicMaterial();
-        // const mesh = new THREE.Mesh(g, mat);
+        const reduceFraction = percentage;
+        const aggressiveness = 7;
+
+
+        const m = this.SimplifyModifier;
+        const TYPES = {
+            i8: { array: Int8Array, heap: "HEAP8" },
+            i16: { array: Int16Array, heap: "HEAP16" },
+            i32: { array: Int32Array, heap: "HEAP32" },
+            f32: { array: Float32Array, heap: "HEAPF32" },
+            f64: { array: Float64Array, heap: "HEAPF64" },
+            u8: { array: Uint8Array, heap: "HEAPU8" },
+            u16: { array: Uint16Array, heap: "HEAPU16" },
+            u32: { array: Uint32Array, heap: "HEAPU32" }
+        };
+
+        function transferNumberArrayToHeap(array, type) {
+            const typedArray = type.array.from(array);
+            const heapPointer = m._malloc(
+                typedArray.length * typedArray.BYTES_PER_ELEMENT
+            );
+
+            m[type.heap].set(typedArray, heapPointer >> 2);
+
+            return heapPointer;
+        }
+
+        function getDataFromHeap(address, type, length) {
+            return m[type.heap].slice(address >> 2, (address >> 2) + length);
+        }
+        
+        const verticesPtr = transferNumberArrayToHeap(Float32Array.from(meshlet.vertices), TYPES.f32);
+        const indicesPtr = transferNumberArrayToHeap(Uint32Array.from(meshlet.indices), TYPES.u32);
+
+
+
+
+        const vertices_output = new Float32Array(meshlet.vertices.length);
+        const vertices_output_ptr = transferNumberArrayToHeap(vertices_output, TYPES.f32);
+
+        const triangles_output = new Uint32Array(meshlet.indices.length);
+        const triangles_output_ptr = transferNumberArrayToHeap(triangles_output, TYPES.u32);
+
+        simplify(verticesPtr, meshlet.vertices.length, indicesPtr, meshlet.indices.length, reduceFraction, aggressiveness, vertices_output_ptr, triangles_output_ptr);
+
+        const simplified_vertex_count = simplified_vertex_count_fn() * 3;
+        const simplified_triangle_count = simplified_triangle_count_fn() * 3;
+
+        const vertices_output_result: Float32Array = getDataFromHeap(vertices_output_ptr, TYPES.f32, simplified_vertex_count);
+        const triangles_output_result: Uint32Array = getDataFromHeap(triangles_output_ptr, TYPES.u32, simplified_triangle_count);
+
+        return {
+            vertices: Array.from(vertices_output_result),
+            vertex_count: vertices_output_result.length / 3,
+            indices: Array.from(triangles_output_result),
+            index_count: triangles_output_result.length,
+        }
     }
 }
