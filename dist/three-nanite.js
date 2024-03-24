@@ -25005,7 +25005,9 @@ var App = class {
           adjacencyListArray.push(entry[1]);
         }
         const groupPartitions = await METISWrapper.partition(adjacencyListArray);
-        const grouppedMeshlets2 = [];
+        console.log("adjacencyList", adjacencyList);
+        console.log("groupPartitions", groupPartitions);
+        const groupedMeshlets2 = [];
         for (let i = 0; i < groupPartitions.length; i++) {
           const group = groupPartitions[i];
           const groupMeshlets = [];
@@ -25014,24 +25016,24 @@ var App = class {
             const meshlet = meshlets[meshletId];
             groupMeshlets.push(meshlet);
           }
-          grouppedMeshlets2.push(groupMeshlets);
+          groupedMeshlets2.push(groupMeshlets);
         }
-        return grouppedMeshlets2;
+        return groupedMeshlets2;
       }
       async function step3_merge(groups) {
-        const grouppedMeshlets2 = [];
+        const groupedMeshlets2 = [];
         for (let i = 0; i < groups.length; i++) {
           const groupMeshlets = groups[i];
           const mergedMeshlets2 = MeshletMerger.merge(groupMeshlets);
-          grouppedMeshlets2.push(mergedMeshlets2);
+          groupedMeshlets2.push(mergedMeshlets2);
         }
-        return grouppedMeshlets2;
+        return groupedMeshlets2;
       }
       async function step4_simplify(meshlets) {
         let simplifiedMeshletGroup = [];
         for (let i = 0; i < meshlets.length; i++) {
-          const grouppedMeshlet = meshlets[i];
-          const simplifiedGroup = await SimplifyModifierV4.simplify(grouppedMeshlet, 0.5);
+          const groupedMeshlet = meshlets[i];
+          const simplifiedGroup = await SimplifyModifierV4.simplify(groupedMeshlet, 0.5);
           simplifiedMeshletGroup.push(simplifiedGroup);
         }
         ;
@@ -25048,15 +25050,15 @@ var App = class {
       }
       const clusterizedMeshlets = await step1_cluster(objVertices, objIndices);
       this.showMeshlets(clusterizedMeshlets, [-0.15, 0, 0]);
-      const grouppedMeshlets = await step2_group(clusterizedMeshlets);
-      for (let i = 0; i < grouppedMeshlets.length; i++) {
+      const groupedMeshlets = await step2_group(clusterizedMeshlets);
+      for (let i = 0; i < groupedMeshlets.length; i++) {
         const meshlet_color = App.rand(i) * 16777215;
-        for (let j = 0; j < grouppedMeshlets[i].length; j++) {
-          const meshlet = grouppedMeshlets[i][j];
+        for (let j = 0; j < groupedMeshlets[i].length; j++) {
+          const meshlet = groupedMeshlets[i][j];
           this.createMesh(meshlet.vertices, meshlet.indices, { color: meshlet_color });
         }
       }
-      const mergedMeshlets = await step3_merge(grouppedMeshlets);
+      const mergedMeshlets = await step3_merge(groupedMeshlets);
       this.showMeshlets(mergedMeshlets, [0.15, 0, 0]);
       const simplifiedMeshlets = await step4_simplify(mergedMeshlets);
       this.showMeshlets(simplifiedMeshlets, [0.3, 0, 0]);

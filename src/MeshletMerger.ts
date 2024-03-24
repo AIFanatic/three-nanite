@@ -1,5 +1,6 @@
 import { Meshlet } from "./App";
 
+// From: THREE.js
 export class MeshletMerger {
     public static merge(meshlets: Meshlet[]): Meshlet {
         const mergedMeshlet: Meshlet = {
