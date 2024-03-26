@@ -22,7 +22,7 @@ Photo description:
 An attempt at reproducing a dynamic LOD in threejs similarly to unreal's nanite.
 Very far from it but nonetheless a start.
 <br>
-For now it clusters triangles into a "Cluster hierarchy" and performs merge and simplify (page 46 of Nanite - A Deep Dive).
+For now it clusters a mesh (meshlets), then groups adjacent clusters into a group, merges the mesh (shared vertices), performs mesh simplification to half the triangles in the mesh (max 128) and finally it splits it into 2 (should be N/2).
 
 ## References
 [Nanite - A Deep Dive](https://advances.realtimerendering.com/s2021/Karis_Nanite_SIGGRAPH_Advances_2021_final.pdf)
