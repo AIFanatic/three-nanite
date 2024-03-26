@@ -1,0 +1,298 @@
+<html>
+
+<head>
+    <style>
+        html,
+        body {
+            margin: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+
+    <script type="importmap">
+        {
+          "imports": {
+            "three": "https://unpkg.com/three@latest/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@latest/examples/jsm/"
+          }
+        }
+    </script>
+
+    <!-- <script src="./meshoptimizer_clusterize.js"></script> -->
+    <script type="module">
+        import Module from "./meshoptimizer_clusterize.js";
+        import * as THREE from "https://unpkg.com/three@latest/build/three.module.js";
+        import { OrbitControls } from "https://unpkg.com/three@latest/examples/jsm/controls/OrbitControls.js";
+        import { OBJLoader } from "https://unpkg.com/three@latest/examples/jsm/loaders/OBJLoader.js";
+        import { mergeVertices } from "https://unpkg.com/three@latest/examples/jsm/utils/BufferGeometryUtils.js";
+
+        import { bunny_meshlets } from "./data/bunny_meshlets.js";
+        import { duck_meshlets } from "./data/duck_meshlets.js";
+        import { dragon_meshlets } from "./data/dragon_meshlets.js";
+
+        const canvas = document.getElementById("canvas");
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = canvas.parentElement.clientHeight;
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas });
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, canvas.width / canvas.height, 0.1, 10000);
+        camera.position.z = 10;
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+
+        const objLoader = new OBJLoader();
+        objLoader.load("./data/bunny.obj", (bunnyGeometry) => {
+            bunnyGeometry = bunnyGeometry.children[0].geometry;
+            bunnyGeometry = bunnyGeometry.toNonIndexed();
+            bunnyGeometry = mergeVertices(bunnyGeometry);
+            const bunnyVertices = bunnyGeometry.getAttribute("position").array;
+            const bunnyIndices = bunnyGeometry.getIndex().array;
+            console.log(bunnyVertices);
+            console.log(bunnyIndices);
+
+
+            function rand(co) {
+                function fract(n) {
+                    return n % 1;
+                }
+
+                function dot(v1, v2) {
+                    return v1[0] * v2[0] + v1[1] * v2[1];
+                }
+
+                return fract(Math.sin(dot(co, [12.9898,78.233])) * 43758.5453);
+            }
+
+            // let vertices = [];
+            // let indices = [];
+            // for (let i = 0; i < bunny_meshlets.length; i++) {
+            //     const meshlet = bunny_meshlets[i];
+            //     console.log(meshlet);
+
+            //     vertices.push(...meshlet.vertices);
+            //     indices.push(...meshlet.indices);
+            //     let g = new THREE.BufferGeometry();
+            //     g.setAttribute("position", new THREE.Float32BufferAttribute(meshlet.vertices, 3));
+            //     g.setIndex(new THREE.Uint16BufferAttribute(meshlet.indices, 1));
+
+            //     // g = mergeVertices(g).toNonIndexed();
+
+            //     const m = new THREE.MeshBasicMaterial({
+            //         // wireframe: true,
+            //         side: 1,
+            //         color: rand([i, 0]) * 0xffffff,
+            //     });
+            //     const mesh = new THREE.Mesh(g, m);
+
+            //     scene.add(mesh);
+            //     // break;
+            // }
+            // return;
+
+            Module().then(MeshOptmizer => {
+                console.log(MeshOptmizer)
+
+
+                const TYPES = {
+                    i8: { array: Int8Array, heap: "HEAP8" },
+                    i16: { array: Int16Array, heap: "HEAP16" },
+                    i32: { array: Int32Array, heap: "HEAP32" },
+                    f32: { array: Float32Array, heap: "HEAPF32" },
+                    f64: { array: Float64Array, heap: "HEAPF64" },
+                    u8: { array: Uint8Array, heap: "HEAPU8" },
+                    u16: { array: Uint16Array, heap: "HEAPU16" },
+                    u32: { array: Uint32Array, heap: "HEAPU32" }
+                };
+
+                function transferNumberArrayToHeap(array, type) {
+                    const typedArray = type.array.from(array);
+                    const heapPointer = MeshOptmizer._malloc(
+                        typedArray.length * typedArray.BYTES_PER_ELEMENT
+                    );
+
+                    MeshOptmizer[type.heap].set(typedArray, heapPointer >> 2);
+
+                    return heapPointer;
+                }
+
+                const meshopt_buildMeshletsBound = MeshOptmizer.cwrap('meshopt_buildMeshletsBound', 'number', ['number', 'number', 'number']);
+
+
+
+
+
+                const meshopt_buildMeshlets = MeshOptmizer.cwrap(
+                    'meshopt_buildMeshlets', // The C function name
+                    'number',                 // The return type
+                    ['number', 'number', 'number', 'number', 'number', // Argument types
+                        'number', 'number', 'number', 'number', 'number', 'number']
+                );
+
+                const meshopt_buildMeshletsScan = MeshOptmizer.cwrap(
+                    'meshopt_buildMeshletsScan', // The C function name
+                    'number',                 // The return type
+                    ['number', 'number', 'number', 'number', 'number',
+                        'number', 'number', 'number']
+                );
+
+
+
+
+
+                const indices = bunnyIndices;
+                const index_count = bunnyIndices.length;
+                const vertex_positions = bunnyVertices;
+                const vertex_count = bunnyVertices.length;
+                const vertex_positions_stride = 3 * Float32Array.BYTES_PER_ELEMENT;
+                const max_vertices = 64;
+                const max_triangles = 124;
+                const cone_weight = 0.0;
+
+                const max_meshlets = meshopt_buildMeshletsBound(bunnyIndices.length, max_vertices, max_triangles);
+                console.log("max_meshlets", max_meshlets)
+                // Prepare the arguments for the function
+                const meshlets = new Uint32Array(max_meshlets * 4);
+                const meshlet_vertices = new Uint32Array(max_meshlets * max_vertices);
+                const meshlet_triangles = new Uint8Array(max_meshlets * max_triangles * 3);
+
+                // console.log("indices", indices[indices.length-1], vertex_count)
+
+                const verticesPtr = transferNumberArrayToHeap(Float32Array.from(bunnyVertices), TYPES.f32);
+                const indicesPtr = transferNumberArrayToHeap(Uint32Array.from(bunnyIndices), TYPES.u32);
+                const meshletsPtr = transferNumberArrayToHeap(Uint32Array.from(meshlets), TYPES.u32);
+                const meshlet_verticesPtr = transferNumberArrayToHeap(Uint32Array.from(meshlet_vertices), TYPES.u32);
+                const meshlet_trianglesPtr = transferNumberArrayToHeap(Uint8Array.from(meshlet_triangles), TYPES.u8);
+
+                console.log(`js: indices[7953]=${indices[7953]}, vertex_count=${vertex_count}`);
+
+                const meshletCount = meshopt_buildMeshlets(
+                    meshletsPtr,
+                    meshlet_verticesPtr,
+                    meshlet_trianglesPtr,
+                    indicesPtr,
+                    index_count,
+                    verticesPtr,
+                    vertex_count,
+                    vertex_positions_stride,
+                    max_vertices,
+                    max_triangles,
+                    cone_weight
+                );
+
+
+                // const meshletCount = meshopt_buildMeshletsScan(
+                //     meshletsPtr,
+                //     meshlet_verticesPtr,
+                //     meshlet_trianglesPtr,
+                //     indicesPtr,
+                //     index_count,
+                //     vertex_count,
+                //     max_vertices,
+                //     max_triangles,
+                // );
+
+
+                // Handle the meshletCount
+                console.log("meshletCount", meshletCount);
+                function getDataFromHeapU8(address, type, length) {
+                    return MeshOptmizer[type.heap].slice(address, address + length);
+                }
+
+                function getDataFromHeap(address, type, length) {
+                    return MeshOptmizer[type.heap].slice(address >> 2, (address >> 2) + length);
+                }
+                const data = getDataFromHeap(meshletsPtr, TYPES.u32, meshlets.length);
+
+                function rebuildMeshlets(data) {
+                    // let meshlets = {vertex_offset, triangle_offset,vertex_count,triangle_count};
+                    let meshlets = [];
+
+                    for (let i = 0; i < data.length; i += 4) {
+                        meshlets.push({
+                            vertex_offset: data[i + 0],
+                            triangle_offset: data[i + 1],
+                            vertex_count: data[i + 2],
+                            triangle_count: data[i + 3]
+                        })
+                    }
+
+                    return meshlets;
+                }
+                console.log(meshletsPtr, data);
+
+                const meshlets_result = rebuildMeshlets(data);
+                console.log(meshlets_result)
+
+                const meshlet_vertices_result = getDataFromHeap(meshlet_verticesPtr, TYPES.u32, meshlet_vertices.length);
+                console.log(meshlet_vertices_result)
+
+                const meshlet_triangles_result = getDataFromHeapU8(meshlet_trianglesPtr, TYPES.u8, meshlet_triangles.length);
+                console.log("meshlet_triangles_result", meshlet_triangles_result)
+
+                let out_positions = [];
+                let out_indices = [];
+
+
+                for (let i = 0; i < meshletCount; i++) {
+                    const meshlet = meshlets_result[i];
+
+                    let meshlet_positions = [];
+                    let meshlet_indices = [];
+
+                    for (let v = 0; v < meshlet.vertex_count; ++v) {
+                        const o3 = 3 * meshlet_vertices_result[meshlet.vertex_offset + v];
+                        meshlet_positions.push(bunnyVertices[o3]);
+                        meshlet_positions.push(bunnyVertices[o3 + 1]);
+                        meshlet_positions.push(bunnyVertices[o3 + 2]);
+                    }
+
+                    for (let t = 0; t < meshlet.triangle_count; ++t) {
+                        const o = meshlet.triangle_offset + 3 * t;
+                        meshlet_indices.push(meshlet_triangles_result[o + 0]);
+                        meshlet_indices.push(meshlet_triangles_result[o + 1]);
+                        meshlet_indices.push(meshlet_triangles_result[o + 2]);
+                    }
+
+
+                    let g = new THREE.BufferGeometry();
+                    g.setAttribute("position", new THREE.Float32BufferAttribute(meshlet_positions, 3));
+                    g.setIndex(new THREE.Uint16BufferAttribute(meshlet_indices, 1));
+
+                    // g = mergeVertices(g).toNonIndexed();
+
+                    const m = new THREE.MeshBasicMaterial({
+                        // wireframe: true,
+                        side: 0,
+                        color: rand([i, 0]) * 0xffffff,
+                    });
+                    const mesh = new THREE.Mesh(g, m);
+
+                    scene.add(mesh);
+                    // break;
+                }
+
+                console.log(out_positions);
+                console.log(out_indices);
+            })
+
+
+        })
+
+        // const cg = new THREE.BoxGeometry(1, 1);
+        // const cm = new THREE.MeshBasicMaterial();
+        // const c = new THREE.Mesh(cg, cm);
+        // scene.add(c);
+
+        const render = () => {
+            renderer.render(scene, camera);
+            requestAnimationFrame(() => render());
+        }
+        render();
+
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,413 @@
+#include "../src/meshoptimizer.h"
+
+#include <assert.h>
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+#include <vector>
+
+#include "../extern/fast_obj.h"
+
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "./tiny_obj_loader.h"
+
+#define CGLTF_IMPLEMENTATION
+#include "./cgltf.h"
+
+struct Vertex
+{
+	float px, py, pz;
+	float nx, ny, nz;
+	float tx, ty;
+};
+
+struct Mesh
+{
+	std::vector<Vertex> vertices;
+	std::vector<unsigned int> indices;
+};
+
+Mesh parseObj(const char* path, double& reindex)
+{
+	fastObjMesh* obj = fast_obj_read(path);
+	if (!obj)
+	{
+		printf("Error loading %s: file not found\n", path);
+		return Mesh();
+	}
+
+	size_t total_indices = 0;
+
+	for (unsigned int i = 0; i < obj->face_count; ++i)
+		total_indices += 3 * (obj->face_vertices[i] - 2);
+
+	std::vector<Vertex> vertices(total_indices);
+
+	size_t vertex_offset = 0;
+	size_t index_offset = 0;
+
+	for (unsigned int i = 0; i < obj->face_count; ++i)
+	{
+		for (unsigned int j = 0; j < obj->face_vertices[i]; ++j)
+		{
+			fastObjIndex gi = obj->indices[index_offset + j];
+
+			Vertex v =
+			    {
+			        obj->positions[gi.p * 3 + 0],
+			        obj->positions[gi.p * 3 + 1],
+			        obj->positions[gi.p * 3 + 2],
+			        obj->normals[gi.n * 3 + 0],
+			        obj->normals[gi.n * 3 + 1],
+			        obj->normals[gi.n * 3 + 2],
+			        obj->texcoords[gi.t * 2 + 0],
+			        obj->texcoords[gi.t * 2 + 1],
+			    };
+
+			// triangulate polygon on the fly; offset-3 is always the first polygon vertex
+			if (j >= 3)
+			{
+				vertices[vertex_offset + 0] = vertices[vertex_offset - 3];
+				vertices[vertex_offset + 1] = vertices[vertex_offset - 1];
+				vertex_offset += 2;
+			}
+
+			vertices[vertex_offset] = v;
+			vertex_offset++;
+		}
+
+		index_offset += obj->face_vertices[i];
+	}
+
+	fast_obj_destroy(obj);
+
+	Mesh result;
+
+	std::vector<unsigned int> remap(total_indices);
+
+	size_t total_vertices = meshopt_generateVertexRemap(&remap[0], NULL, total_indices, &vertices[0], total_indices, sizeof(Vertex));
+
+	result.indices.resize(total_indices);
+	meshopt_remapIndexBuffer(&result.indices[0], NULL, total_indices, &remap[0]);
+
+	result.vertices.resize(total_vertices);
+	meshopt_remapVertexBuffer(&result.vertices[0], &vertices[0], total_indices, sizeof(Vertex), &remap[0]);
+
+	return result;
+}
+
+void meshlets(const Mesh& mesh, bool scan)
+{
+	const size_t max_vertices = 64;
+	const size_t max_triangles = 124; // NVidia-recommended 126, rounded down to a multiple of 4
+	const float cone_weight = 0.0f;   // note: should be set to 0 unless cone culling is used at runtime!
+
+	size_t max_meshlets = meshopt_buildMeshletsBound(mesh.indices.size(), max_vertices, max_triangles);
+	std::vector<meshopt_Meshlet> meshlets(max_meshlets);
+	std::vector<unsigned int> meshlet_vertices(max_meshlets * max_vertices);
+	std::vector<unsigned char> meshlet_triangles(max_meshlets * max_triangles * 3);
+
+	meshlets.resize(meshopt_buildMeshlets(
+	    meshlets.data(),
+	    meshlet_vertices.data(),
+	    meshlet_triangles.data(),
+	    mesh.indices.data(),
+	    mesh.indices.size(),
+	    &mesh.vertices[0].px,
+	    mesh.vertices.size(),
+	    sizeof(Vertex),
+	    max_vertices,
+	    max_triangles,
+	    cone_weight));
+
+	std::vector<float> out_positions;
+	std::vector<unsigned int> out_indices;
+
+	printf("[");
+	for (size_t ml = 0; ml < meshlets.size(); ++ml)
+	{
+		meshopt_Meshlet& meshlet = meshlets[ml];
+
+		unsigned int outputVerticesOffset = out_positions.size();
+
+		printf("{");
+		printf("\"meshletId\": %lu,", ml);
+		printf("\"vertices\": [");
+		for (unsigned int v = 0; v < meshlet.vertex_count; ++v)
+		{
+			int o3 = 3 * meshlet_vertices[meshlet.vertex_offset + v];
+			float x = mesh.vertices[o3].px;
+			float y = mesh.vertices[o3].py;
+			float z = mesh.vertices[o3].pz;
+			out_positions.push_back(x);
+			out_positions.push_back(y);
+			out_positions.push_back(z);
+
+			printf("%f, %f, %f,", x, y, z);
+
+			if (x == 0.0)
+			{
+				printf("meshlet.vertex_offset: %i, v: %i\n", meshlet.vertex_offset, v);
+				printf("%f, %f, %f,", x, y, z);
+				exit(1);
+			}
+		}
+		printf("],");
+		printf("\"indices\": [");
+
+		unsigned int outputTriangleOffset = out_indices.size() / 3;
+		for (unsigned t = 0; t < meshlet.triangle_count; ++t)
+		{
+			int o = meshlet.triangle_offset + 3 * t;
+
+			unsigned int a = meshlet_triangles[o + 0];
+			unsigned int b = meshlet_triangles[o + 2];
+			unsigned int c = meshlet_triangles[o + 1];
+			out_indices.push_back(a);
+			out_indices.push_back(b);
+			out_indices.push_back(c);
+
+			printf("%u,%u,%u,", a, b, c);
+		}
+		printf("]");
+		printf("}");
+	}
+	printf("]\n");
+}
+
+void meshletsFromGltf(const char* gltfPath, const char* gltfBinPath)
+{
+	std::vector<float> out_positions;
+	std::vector<unsigned int> out_indices;
+
+	cgltf_options options = {};
+	cgltf_data* data = nullptr;
+	cgltf_result result = cgltf_parse_file(&options, gltfPath, &data);
+	assert(result == cgltf_result_success);
+
+	result = cgltf_load_buffers(&options, data, gltfBinPath);
+	assert(result == cgltf_result_success);
+
+	for (int m = 0; m < data->meshes_count; ++m)
+	{
+		for (int p = 0; p < data->meshes[m].primitives_count; ++p)
+		{
+			cgltf_primitive& primitive = data->meshes[m].primitives[p];
+			assert(primitive.type == cgltf_primitive_type_triangles);
+
+			cgltf_attribute* positions = nullptr;
+			for (int a = 0; a < primitive.attributes_count; ++a)
+			{
+				if (primitive.attributes[a].type == cgltf_attribute_type_position)
+					positions = &primitive.attributes[a];
+			}
+			assert(positions != nullptr);
+
+			cgltf_accessor* positions_accessor = positions->data;
+			assert(positions_accessor != nullptr);
+			assert(positions_accessor->type == cgltf_type_vec3);
+			assert(positions_accessor->component_type == cgltf_component_type_r_32f);
+			assert(positions_accessor->stride == 3 * sizeof(float));
+			cgltf_buffer* position_buffer = positions_accessor->buffer_view->buffer;
+			char* position_ptr_raw = reinterpret_cast<char*>(position_buffer->data) + positions_accessor->buffer_view->offset + positions_accessor->offset;
+			float* position_ptr = reinterpret_cast<float*>(position_ptr_raw);
+
+			cgltf_accessor* indices_accessor = primitive.indices;
+			assert(indices_accessor != nullptr);
+			assert(indices_accessor->type == cgltf_type_scalar);
+			cgltf_buffer* index_buffer = indices_accessor->buffer_view->buffer;
+			char* index_ptr_raw = reinterpret_cast<char*>(index_buffer->data) + indices_accessor->buffer_view->offset + indices_accessor->offset;
+
+			std::vector<unsigned int> temp_indices(indices_accessor->count);
+			if (indices_accessor->component_type == cgltf_component_type_r_16u)
+			{
+				assert(indices_accessor->stride == sizeof(uint16_t));
+				uint16_t* index_ptr = reinterpret_cast<uint16_t*>(index_ptr_raw);
+				for (int i = 0; i < indices_accessor->count; ++i)
+				{
+					temp_indices[i] = index_ptr[i];
+				}
+			}
+			else
+			{
+				assert(indices_accessor->component_type == cgltf_component_type_r_32u);
+				uint32_t* index_ptr = reinterpret_cast<uint32_t*>(index_ptr_raw);
+				for (int i = 0; i < indices_accessor->count; ++i)
+				{
+					temp_indices[i] = index_ptr[i];
+				}
+			}
+
+			const size_t max_vertices = 64;
+			const size_t max_triangles = 124;
+			const float cone_weight = 0.0f;
+
+			size_t max_meshlets = meshopt_buildMeshletsBound(temp_indices.size(), max_vertices, max_triangles);
+			std::vector<meshopt_Meshlet> meshlets(max_meshlets);
+			std::vector<unsigned int> meshlet_vertices(max_meshlets * max_vertices);
+			std::vector<unsigned char> meshlet_triangles(max_meshlets * max_triangles * 3);
+			size_t meshlet_count = meshopt_buildMeshlets(
+			    meshlets.data(),
+			    meshlet_vertices.data(),
+			    meshlet_triangles.data(),
+			    temp_indices.data(),
+			    temp_indices.size(),
+			    position_ptr,
+			    positions_accessor->count,
+			    positions_accessor->stride,
+			    max_vertices, max_triangles, cone_weight);
+
+			printf("[");
+			for (int ml = 0; ml < meshlet_count; ++ml)
+			{
+				meshopt_Meshlet& meshlet = meshlets[ml];
+
+				unsigned int outputVerticesOffset = out_positions.size();
+
+				printf("{");
+				printf("\"meshletId\": %lu,", ml);
+				printf("\"vertices\": [");
+				for (int v = 0; v < meshlet.vertex_count; ++v)
+				{
+					int o2 = 2 * meshlet_vertices[meshlet.vertex_offset + v];
+					int o3 = 3 * meshlet_vertices[meshlet.vertex_offset + v];
+					int o4 = 3 * meshlet_vertices[meshlet.vertex_offset + v];
+					// float3 pos = float3{ position_ptr[o3], position_ptr[o3 + 1], position_ptr[o3 + 2] };
+					out_positions.push_back(position_ptr[o3]);
+					out_positions.push_back(position_ptr[o3 + 1]);
+					out_positions.push_back(position_ptr[o3 + 2]);
+
+					printf("%f, %f, %f,", position_ptr[o3], position_ptr[o3 + 1], position_ptr[o3 + 2]);
+				}
+				printf("],");
+				printf("\"indices\": [");
+				unsigned int outputTriangleOffset = out_indices.size() / 3;
+				for (int t = 0; t < meshlet.triangle_count; ++t)
+				{
+					int o = meshlet.triangle_offset + 3 * t;
+					out_indices.push_back(meshlet_triangles[o + 0]);
+					out_indices.push_back(meshlet_triangles[o + 2]);
+					out_indices.push_back(meshlet_triangles[o + 1]);
+
+					printf("%u,%u,%u,", meshlet_triangles[o + 0], meshlet_triangles[o + 2], meshlet_triangles[o + 1]);
+				}
+
+				printf("]");
+				printf("}");
+			}
+			printf("]\n");
+			printf("max_meshlets: %i\n", max_meshlets);
+		}
+	}
+}
+
+void meshletsFromObj(const char* objPath)
+{
+	tinyobj::ObjReaderConfig reader_config;
+	tinyobj::ObjReader reader;
+
+	if (!reader.ParseFromFile(objPath, reader_config))
+	{
+		if (!reader.Error().empty())
+		{
+			printf("TinyObjReader: %s\n", reader.Error().c_str());
+		}
+		exit(1);
+	}
+
+	auto& attrib = reader.GetAttrib();
+	auto& shapes = reader.GetShapes();
+
+	std::vector<float> mesh_vertices;
+	std::vector<unsigned int> mesh_indices;
+
+	for (size_t i = 0; i < shapes.size(); i++) {
+		for (size_t j = 0; j < shapes[i].mesh.indices.size(); j++) {
+			mesh_indices.push_back(shapes[i].mesh.indices[j].vertex_index);
+		}
+	}
+
+	for (size_t i = 0; i < attrib.vertices.size(); i++) {
+		mesh_vertices.push_back(attrib.vertices[i]);
+	}
+
+
+	fastObjMesh* obj = fast_obj_read(objPath);
+	if (!obj)
+	{
+		printf("Error loading %s: file not found\n", objPath);
+		exit(1);
+	}
+
+	const size_t max_vertices = 64;
+	const size_t max_triangles = 124;
+	const float cone_weight = 0.0f;
+
+	size_t max_meshlets = meshopt_buildMeshletsBound(mesh_indices.size(), max_vertices, max_triangles);
+	printf("max_meshlets: %i\n", max_meshlets);
+	std::vector<meshopt_Meshlet> meshlets(max_meshlets);
+	std::vector<unsigned int> meshlet_vertices(max_meshlets * max_vertices);
+	std::vector<unsigned char> meshlet_triangles(max_meshlets * max_triangles * 3);
+	size_t meshlet_count = meshopt_buildMeshlets(
+	    meshlets.data(),
+	    meshlet_vertices.data(),
+	    meshlet_triangles.data(),
+	    mesh_indices.data(),
+	    mesh_indices.size(),
+	    mesh_vertices.data(),
+	    mesh_vertices.size(),
+	    sizeof(float) * 3,
+	    max_vertices, max_triangles, cone_weight);
+
+	std::vector<float> out_positions;
+	std::vector<unsigned int> out_indices;
+	printf("[");
+	for (int ml = 0; ml < meshlet_count; ++ml)
+	{
+		meshopt_Meshlet& meshlet = meshlets[ml];
+
+		unsigned int outputVerticesOffset = out_positions.size();
+
+		printf("{");
+		printf("\"meshletId\": %lu,", ml);
+		printf("\"vertices\": [");
+		for (int v = 0; v < meshlet.vertex_count; ++v)
+		{
+			int o3 = 3 * meshlet_vertices[meshlet.vertex_offset + v];
+			out_positions.push_back(mesh_vertices[o3]);
+			out_positions.push_back(mesh_vertices[o3 + 1]);
+			out_positions.push_back(mesh_vertices[o3 + 2]);
+
+			printf("%f, %f, %f,", mesh_vertices[o3], mesh_vertices[o3 + 1], mesh_vertices[o3 + 2]);
+		}
+		printf("],");
+		printf("\"indices\": [");
+		unsigned int outputTriangleOffset = out_indices.size() / 3;
+		for (int t = 0; t < meshlet.triangle_count; ++t)
+		{
+			int o = meshlet.triangle_offset + 3 * t;
+			out_indices.push_back(meshlet_triangles[o + 0]);
+			out_indices.push_back(meshlet_triangles[o + 2]);
+			out_indices.push_back(meshlet_triangles[o + 1]);
+
+			printf("%u,%u,%u,", meshlet_triangles[o + 0], meshlet_triangles[o + 2], meshlet_triangles[o + 1]);
+		}
+
+		printf("]");
+		printf("}");
+	}
+	printf("]\n");
+	printf("max_meshlets: %i\n", max_meshlets);
+}
+
+int main(int argc, char** argv)
+{
+	// meshletsFromGltf(argv[2], argv[3]);
+	meshletsFromObj(argv[4]);
+
+	printf("OBJ\n");
+
+	return 0;
+}

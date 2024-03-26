@@ -34,6 +34,9 @@ export class MeshletMerger {
         mergedMeshlet.index_count = mergedMeshlet.indices.length;
         mergedMeshlet.vertex_count = mergedMeshlet.vertices.length / 3;
     
+
+
+        console.log("NEED to clean vertices and indices");
         return mergedMeshlet;
     }
 }

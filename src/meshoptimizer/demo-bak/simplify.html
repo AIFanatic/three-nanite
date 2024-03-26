@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>meshoptimizer - demo</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				font-family: Monospace;
+				background-color: #000;
+				color: #fff;
+				margin: 0px;
+				overflow: hidden;
+			}
+			#info {
+				color: #fff;
+				position: absolute;
+				top: 10px;
+				width: 100%;
+				text-align: center;
+				z-index: 100;
+				display:block;
+			}
+			#info a, .button { color: #f00; font-weight: bold; text-decoration: underline; cursor: pointer }
+		</style>
+
+		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "https://unpkg.com/three@0.154.0/build/three.module.js",
+					"three-examples/": "https://unpkg.com/three@0.154.0/examples/jsm/"
+				}
+			}
+		</script>
+	</head>
+
+	<body>
+		<div id="info">
+		<a href="https://github.com/zeux/meshoptimizer" target="_blank" rel="noopener">meshoptimizer</a>
+		</div>
+
+		<script type="module">
+			import * as THREE from 'three';
+			import { GLTFLoader } from 'three-examples/loaders/GLTFLoader.js';
+			import { OrbitControls } from 'three-examples/controls/OrbitControls.js';
+			import { MeshoptDecoder } from '../js/meshopt_decoder.module.js';
+			import { MeshoptSimplifier } from '../js/meshopt_simplifier.module.js';
+			import { GUI } from 'https://unpkg.com/lil-gui@0.17.0/dist/lil-gui.esm.js';
+
+			var container;
+
+			var camera, scene, renderer, mixer, clock, controls, model;
+
+			var settings = {
+				wireframe: false,
+				pointSize: 1.0,
+				ratio: 1.0,
+				lockBorder: false,
+				useAttributes: false,
+				errorThresholdLog10: 1,
+				normalWeight: 0.01,
+				colorWeight: 0.01,
+
+				loadFile: function() {
+					var input = document.createElement('input');
+					input.type = 'file';
+					input.onchange = function() {
+						var uri = URL.createObjectURL(input.files[0]);
+
+						load(uri);
+						controls.reset();
+					};
+					input.click();
+				},
+
+				updateModule: function() {
+					reload();
+					simplify();
+				}
+			};
+
+			var gui = new GUI({ width: 300 });
+			var guiDisplay = gui.addFolder('Display');
+			guiDisplay.add(settings, 'wireframe').onChange(update);
+			guiDisplay.add(settings, 'pointSize', 1, 16).onChange(update);
+
+			var guiSimplify = gui.addFolder('Simplify');
+			guiSimplify.add(settings, 'ratio', 0, 1, 0.01).onChange(simplify);
+			guiSimplify.add(settings, 'lockBorder').onChange(simplify);
+			guiSimplify.add(settings, 'errorThresholdLog10', 0, 3, 0.1).onChange(simplify);
+			guiSimplify.add(settings, 'useAttributes').onChange(simplify);
+			guiSimplify.add(settings, 'normalWeight', 0, 0.1, 0.001).onChange(simplify);
+			guiSimplify.add(settings, 'colorWeight', 0, 0.1, 0.001).onChange(simplify);
+
+			var guiLoad = gui.addFolder('Load');
+			guiLoad.add(settings, 'loadFile');
+			guiLoad.add(settings, 'updateModule');
+
+			var windowHalfX = window.innerWidth / 2;
+			var windowHalfY = window.innerHeight / 2;
+
+			init();
+			load('pirate.glb');
+			animate();
+
+			function simplifyMesh(geo) {
+				if (!geo.index.original) {
+					geo.index.original = geo.index.array;
+				}
+
+				var attributes = 6; // 3 color, 3 normal
+
+				var positions = new Float32Array(geo.attributes.position.array);
+				var indices = geo.index.original;
+				var target = Math.floor(indices.length * settings.ratio / 3) * 3;
+
+				if (settings.useAttributes)
+				{
+					var attrib = new Float32Array(geo.attributes.position.count * attributes);
+
+					for (var i = 0, e = geo.attributes.position.count; i < e; ++i)
+					{
+						if (geo.attributes.normal) {
+							attrib[i*attributes+0] = geo.attributes.normal.getX(i);
+							attrib[i*attributes+1] = geo.attributes.normal.getY(i);
+							attrib[i*attributes+2] = geo.attributes.normal.getZ(i);
+						}
+
+						if (geo.attributes.color) {
+							attrib[i*attributes+3] = geo.attributes.color.getX(i);
+							attrib[i*attributes+4] = geo.attributes.color.getY(i);
+							attrib[i*attributes+5] = geo.attributes.color.getZ(i);
+						}
+					}
+
+					var attrib_weights = [
+						settings.normalWeight, settings.normalWeight, settings.normalWeight,
+						settings.colorWeight, settings.colorWeight, settings.colorWeight,
+					];
+				}
+
+				var flags = [];
+				if (settings.lockBorder) {
+					flags.push("LockBorder");
+				}
+
+				var threshold = Math.pow(10, -settings.errorThresholdLog10);
+				var stride = (geo.attributes.position instanceof THREE.InterleavedBufferAttribute) ? geo.attributes.position.data.stride : 3;
+
+				console.time('simplify');
+
+				var res =
+					settings.useAttributes
+					? MeshoptSimplifier.simplifyWithAttributes(indices, positions, stride, attrib, attributes, attrib_weights, target, threshold, flags)
+					: MeshoptSimplifier.simplify(indices, positions, stride, target, threshold, flags);
+
+				console.timeEnd('simplify');
+
+				console.log('simplified to', res[0].length / 3);
+
+				geo.index.array = res[0];
+				geo.index.count = res[0].length;
+				geo.index.needsUpdate = true;
+			}
+
+			function simplifyPoints(geo) {
+				var positions = new Float32Array(geo.attributes.position.array);
+				var colors = undefined;
+
+				var target = Math.floor(geo.attributes.position.count * settings.ratio);
+
+				if (settings.useAttributes && geo.attributes.color) {
+					colors = new Float32Array(geo.attributes.color.array);
+				}
+
+				var pos_stride = (geo.attributes.position instanceof THREE.InterleavedBufferAttribute) ? geo.attributes.position.data.stride : 3;
+				var col_stride = (geo.attributes.color instanceof THREE.InterleavedBufferAttribute) ? geo.attributes.color.data.stride : geo.attributes.color.itemSize;
+
+				// note: we are converting source color array without normalization; if the color data is quantized, we need to divide by 255 to normalize it
+				var colorScale = geo.attributes.color && geo.attributes.color.normalized ? 255 : 1;
+
+				console.time('simplify');
+
+				var res = MeshoptSimplifier.simplifyPoints(positions, pos_stride, target, colors, col_stride, settings.colorWeight / colorScale);
+
+				console.timeEnd('simplify');
+
+				console.log('simplified to', res.length);
+
+				geo.index = new THREE.BufferAttribute(res, 1);
+			}
+
+			function simplify()
+			{
+				MeshoptSimplifier.useExperimentalFeatures = true;
+
+				MeshoptSimplifier.ready.then(function() {
+					scene.traverse(function (object) {
+						if (object.isMesh) {
+							simplifyMesh(object.geometry);
+						}
+						if (object.isPoints) {
+							simplifyPoints(object.geometry);
+						}
+					});
+				});
+			}
+
+			function reload()
+			{
+				var simp = import('/js/meshopt_simplifier.module.js?x=' + Date.now());
+				MeshoptSimplifier.ready = simp.then(function (s) {
+					return s.MeshoptSimplifier.ready.then(function () {
+						for (var prop in s.MeshoptSimplifier) {
+							MeshoptSimplifier[prop] = s.MeshoptSimplifier[prop];
+						}
+					})
+				});
+			}
+
+			function update()
+			{
+				scene.traverse(function(child) {
+					if (child.isMesh) {
+						child.material.wireframe = settings.wireframe;
+					}
+					if (child.isPoints) {
+						child.material.size = settings.pointSize;
+					}
+				});
+			}
+
+			function load(path)
+			{
+				if (model) {
+					scene.remove(model);
+					model = undefined;
+				}
+
+				var onProgress = function (xhr) {};
+				var onError = function (e) {
+					console.log(e);
+				};
+
+				var loader = new GLTFLoader();
+				loader.setMeshoptDecoder(MeshoptDecoder);
+				loader.load(path, function (gltf) {
+					model = gltf.scene;
+
+					var bbox = new THREE.Box3().setFromObject(model);
+					var scale = 2 / (bbox.max.y - bbox.min.y);
+					var offset = -(bbox.min.y + bbox.max.y) / 2 * scale;
+
+					model.scale.set(scale, scale, scale);
+					model.position.set(0, offset, 0);
+
+					scene.add(model);
+
+					mixer = new THREE.AnimationMixer(model);
+
+					if (gltf.animations.length) {
+						mixer.clipAction(gltf.animations[gltf.animations.length - 1]).play();
+					}
+				}, onProgress, onError);
+			}
+
+			function init()
+			{
+				container = document.createElement('div');
+				document.body.appendChild(container);
+
+				renderer = new THREE.WebGLRenderer();
+				renderer.setPixelRatio(window.devicePixelRatio);
+				renderer.setSize(window.innerWidth, window.innerHeight);
+				container.appendChild(renderer.domElement);
+
+				window.addEventListener('resize', onWindowResize, false);
+
+				camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 100);
+				camera.position.y = 1.0;
+				camera.position.z = 3.0;
+
+				controls = new OrbitControls(camera, renderer.domElement);
+
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color(0x300a24);
+
+				var ambientLight = new THREE.AmbientLight(0xcccccc, 0.3);
+				scene.add(ambientLight);
+
+				var pointLight = new THREE.PointLight(0xffffff, 0.8);
+				pointLight.position.set(3, 3, 0);
+				camera.add(pointLight);
+				scene.add(camera);
+
+				clock = new THREE.Clock();
+			}
+
+			function onWindowResize()
+			{
+				windowHalfX = window.innerWidth / 2;
+				windowHalfY = window.innerHeight / 2;
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize(window.innerWidth, window.innerHeight);
+			}
+
+			function animate()
+			{
+				if (mixer) {
+					mixer.update(clock.getDelta());
+				}
+
+				requestAnimationFrame(animate);
+				controls.update();
+				renderer.render(scene, camera);
+			}
+		</script>
+	</body>
+</html>

@@ -10,9 +10,13 @@ Photo description:
 - 1: Original object.
 - 2: Meshletized/Clustered: Using [meshoptimizer](https://github.com/zeux/meshoptimizer).
 - 3: Grouped meshlets: Partitions adjacent meshlets into groups using [METIS](https://github.com/KarypisLab/METIS).
-- 4: Merged grouped meshlets: Simply merges meshlets using THREE.js mergeGeometries.
-- 5: Simplification: Simplify the mesh using [quadric mesh simplification](https://github.com/jannessm/quadric-mesh-simplification) (Garland 1997).
+- 4: Merged grouped meshlets: Merges meshlets using [meshoptimizer](https://github.com/zeux/meshoptimizer).
+- 5: Simplification: Simplify the mesh using [meshoptimizer](https://github.com/zeux/meshoptimizer) (Garland 1997).
 - 6: Split: Similar to step 2.
+
+<p align="center">
+<img src="./screenshots/showcase2.png">
+</p>
 
 ## Description
 An attempt at reproducing a dynamic LOD in threejs similarly to unreal's nanite.

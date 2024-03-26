@@ -14,10 +14,12 @@ export class MeshletCreator {
     private static max_triangles = 128;
     private static cone_weight = 0.0;
 
-    private static async buildFromWasm(vertices: Float32Array, indices: Uint32Array): Promise<MeshletBuildOutput> {
+    private static async buildFromWasm(vertices: Float32Array, indices: Uint32Array, max_triangles: number): Promise<MeshletBuildOutput> {
         const max_vertices = MeshletCreator.max_vertices;
-        const max_triangles = MeshletCreator.max_triangles;
         const cone_weight = MeshletCreator.cone_weight;
+
+        console.log("triangle count", indices.length / 3);
+        console.log("max_triangles", max_triangles);
 
         const output = await MeshletBuilder_wasm.build(vertices, indices, max_vertices, max_triangles, cone_weight)
         return {
@@ -29,9 +31,8 @@ export class MeshletCreator {
     }
 
     // Still has bugs
-    private static async buildFromJS(vertices: Float32Array, indices: Uint32Array) {
+    private static async buildFromJS(vertices: Float32Array, indices: Uint32Array, max_triangles: number) {
         const max_vertices = MeshletCreator.max_vertices;
-        const max_triangles = MeshletCreator.max_triangles;
         const cone_weight = MeshletCreator.cone_weight;
 
         const max_meshlets = MeshletBuilder.meshopt_buildMeshletsBound(indices.length, max_vertices, max_triangles);
@@ -105,10 +106,10 @@ export class MeshletCreator {
         return meshlets;
     }
 
-    public static async build(vertices: Float32Array, indices: Uint32Array, useWasm = true) {
+    public static async build(vertices: Float32Array, indices: Uint32Array, max_triangles: number, useWasm = true) {
         const buildOutput = useWasm ? 
-                            await MeshletCreator.buildFromWasm(vertices, indices) :
-                            await MeshletCreator.buildFromJS(vertices, indices);
+                            await MeshletCreator.buildFromWasm(vertices, indices, max_triangles):
+                            await MeshletCreator.buildFromJS(vertices, indices, max_triangles);
 
         const meshlets = MeshletCreator.buildMeshletsFromBuildOutput(vertices, buildOutput);
         
