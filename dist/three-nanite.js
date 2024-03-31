@@ -23874,14 +23874,14 @@ var App = class {
       const step = async (meshlets, y2, scale = [1, 1, 1], lod) => {
         this.showMeshlets(meshlets, [0, y2, 0], scale);
         const adj = adjacencyList(meshlets);
-        const MinPartitionSize = 8;
-        const MaxPartitionSize = 32;
-        const TargetPartitionSize = (MinPartitionSize + MaxPartitionSize) / 2;
-        const TargetNumPartitions = Math.ceil(meshlets.length * 0.5);
-        console.log("meshlets", meshlets.length, TargetNumPartitions);
+        const minNumberOfGroups = 8;
+        const maxNumberOfGroups = 32;
+        const groupSize = (minNumberOfGroups + maxNumberOfGroups) / 2;
+        const nparts = Math.ceil(meshlets.length * 0.5);
+        console.log("meshlets", meshlets.length, nparts);
         let grouped = [meshlets];
-        if (TargetNumPartitions > 1) {
-          const groups = await METISWrapper.partition(adj, TargetNumPartitions);
+        if (nparts > 1) {
+          const groups = await METISWrapper.partition(adj, nparts);
           grouped = rebuildMeshletsFromGroupIndicesV3(meshlets, groups);
         }
         let splitOut = [];
