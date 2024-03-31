@@ -31,12 +31,21 @@ Very far from it but nonetheless a start.
 <br>
 For now it clusters a mesh (meshlets), then groups adjacent clusters into a group, merges the mesh (shared vertices), performs mesh simplification to half the triangles in the mesh (max 128) and finally it splits it into 2 (should be N/2).
 
+## TODO:
+- LOD errors
+- Build DAG and perform cuts
+- Stream geometry to GPU
+
 ## References
 [Nanite - A Deep Dive](https://advances.realtimerendering.com/s2021/Karis_Nanite_SIGGRAPH_Advances_2021_final.pdf)
 <br />
 [The Nanite System in Unreal Engine 5](https://www.medien.ifi.lmu.de/lehre/ws2122/gp/slides/gp-ws2122-extra-nanite.pdf)
-
-
-## TODO:
-- Build DAG and perform cuts
-- Stream geometry to GPU
+<br />
+[Multiresolution structures
+for interactive visualization
+of very large 3D datasets](https://vcg.isti.cnr.it/~ponchio/download/ponchio_phd.pdf)
+<br />
+[Batched Multi Triangulations](https://vcg.isti.cnr.it/Publications/2005/CGGMPS05/Slide_BatchedMT_Vis05.pdf)
+<br />
+[CS 418 – Streaming, Level of Detail, and Occlusion
+](https://cs418.cs.illinois.edu/website/text/nanite.html)
