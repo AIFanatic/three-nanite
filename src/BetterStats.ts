@@ -25,7 +25,7 @@ export class BetterStats {
         msDiv.appendChild( msText );
 
         this.msTexts = [];
-        const nLines = 9;
+        const nLines = 10;
         for(var i = 0; i < nLines; i++){
             this.msTexts[i]	= document.createElement( 'div' );
             this.msTexts[i].style.cssText = 'color:#f00;background-color:#311;font-family:Helvetica,Arial,sans-serif;font-size:9px;font-weight:bold;line-height:15px';
@@ -60,5 +60,6 @@ export class BetterStats {
         this.msTexts[i++].textContent = "FPS: "	+ Math.floor(this.fps);
         this.msTexts[i++].textContent = "Triangles: "	+ Math.floor(this.renderer.info.render.triangles);
         this.msTexts[i++].textContent = "Points: "	+ this.renderer.info.render.points;
+        this.msTexts[i++].textContent = "Lines: "	+ this.renderer.info.render.lines;
     }
 };

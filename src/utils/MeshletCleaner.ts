@@ -1,4 +1,4 @@
-import { Meshlet } from "../App";
+import { Meshlet } from "../Meshlet";
 import { WASMHelper, WASMPointer } from "./WasmHelper";
 
 import MeshOptimizerModule from "./meshoptimizer";
@@ -18,24 +18,24 @@ export class MeshletCleaner {
 
         const MeshOptmizer = MeshletCleaner.meshoptimizer;
 
-        const remap = new WASMPointer(new Uint32Array(meshlet.indices.length * 3), "out");
-        const indices = new WASMPointer(new Uint32Array(meshlet.indices), "in");
-        const vertices = new WASMPointer(new Float32Array(meshlet.vertices), "in");
+        const remap = new WASMPointer(new Uint32Array(meshlet.indices_raw.length * 3), "out");
+        const indices = new WASMPointer(new Uint32Array(meshlet.indices_raw), "in");
+        const vertices = new WASMPointer(new Float32Array(meshlet.vertices_raw), "in");
 
         const vertex_count = WASMHelper.call(MeshOptmizer, "meshopt_generateVertexRemap", "number", 
             remap,
             indices,
-            meshlet.indices.length,
+            meshlet.indices_raw.length,
             vertices,
-            meshlet.vertices.length,
+            meshlet.vertices_raw.length,
             3 * Float32Array.BYTES_PER_ELEMENT
         );
         
-        const indices_remapped = new WASMPointer(new Uint32Array(meshlet.indices.length), "out");
+        const indices_remapped = new WASMPointer(new Uint32Array(meshlet.indices_raw.length), "out");
         WASMHelper.call(MeshOptmizer, "meshopt_remapIndexBuffer", "number", 
             indices_remapped,
             indices,
-            meshlet.indices.length,
+            meshlet.indices_raw.length,
             remap
         );
         
@@ -43,23 +43,12 @@ export class MeshletCleaner {
         WASMHelper.call(MeshOptmizer, "meshopt_remapVertexBuffer", "number", 
             vertices_remapped,
             vertices,
-            meshlet.vertices.length,
+            meshlet.vertices_raw.length,
             3 * Float32Array.BYTES_PER_ELEMENT,
             remap
         );
 
-        console.log("meshlet_vertices", meshlet.vertices);
-        console.log("meshlet_indices", meshlet.indices);
-
-        console.log("vertices_remapped", vertices_remapped.data);
-        console.log("indices_remapped", indices_remapped.data);
-
-
-        return {
-            vertices: vertices_remapped.data,
-            vertex_count: vertices_remapped.data.length / 3,
-            indices: indices_remapped.data,
-            index_count: indices_remapped.data.length
-        }
+        const m = new Meshlet(vertices_remapped.data, indices_remapped.data);
+        return m;
     }
 }

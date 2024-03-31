@@ -1,42 +1,32 @@
-import { Meshlet } from "./App";
+import { Meshlet } from "./Meshlet";
 
 // From: THREE.js
 export class MeshletMerger {
     public static merge(meshlets: Meshlet[]): Meshlet {
-        const mergedMeshlet: Meshlet = {
-            vertices: [],
-            vertex_count: 0,
-            indices: [],
-            index_count: 0
-        };
+        const vertices: number[] = [];
+        const indices: number[] = [];
     
         // merge indices
         let indexOffset = 0;
         const mergedIndices: number[] = [];
     
         for (let i = 0; i < meshlets.length; ++i) {
-            const indices = meshlets[i].indices;
+            const indices = meshlets[i].indices_raw;
     
             for (let j = 0; j < indices.length; j++) {
                 mergedIndices.push(indices[j] + indexOffset);
             }
-            indexOffset += meshlets[i].vertex_count;
+            indexOffset += meshlets[i].vertices.length;
         }
     
-        mergedMeshlet.indices = mergedIndices;
+        indices.push(...mergedIndices);
     
         // merge attributes
         for (let i = 0; i < meshlets.length; ++i) {
-            const vertices = meshlets[i].vertices;
-            mergedMeshlet.vertices.push(...vertices);
+            vertices.push(...meshlets[i].vertices_raw);
         }
     
-        mergedMeshlet.index_count = mergedMeshlet.indices.length;
-        mergedMeshlet.vertex_count = mergedMeshlet.vertices.length / 3;
-    
-
-
-        console.log("NEED to clean vertices and indices");
-        return mergedMeshlet;
+        const merged = new Meshlet(vertices, indices);
+        return merged;
     }
 }

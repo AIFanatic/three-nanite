@@ -6,7 +6,6 @@ import { BetterStats } from "./BetterStats";
 
 import { MeshletGrouper } from "./MeshletGrouper";
 import { OBJLoaderIndexed } from "./OBJLoaderIndexed";
-import { MeshletCreator } from "./MeshletCreator";
 import { MeshletMerger } from "./MeshletMerger";
 import { METISWrapper } from "./METISWrapper";
 
@@ -14,13 +13,8 @@ import { DAG } from "./DAG";
 import { instance } from "@viz-js/viz";
 import { MeshletSimplifier_wasm } from "./utils/MeshletSimplifier_wasm";
 import { MeshletCleaner } from "./utils/MeshletCleaner";
-
-export interface Meshlet {
-    vertices: number[],
-    indices: number[],
-    vertex_count: number,
-    index_count: number,
-};
+import { Meshlet } from "./Meshlet";
+import { TEST_MESHES } from "./test";
 
 export class App {
     private canvas: HTMLCanvasElement;
@@ -54,10 +48,6 @@ export class App {
             return n % 1;
         }
 
-        function dot(v1: number[], v2: number[]) {
-            return v1[0] * v2[0] + v1[1] * v2[1];
-        }
-
         return fract(Math.sin((co + 1) * 12.9898) * 43758.5453);
     }
 
@@ -65,7 +55,7 @@ export class App {
         let g = new THREE.SphereGeometry(radius);
 
         const m = new THREE.MeshBasicMaterial({
-            wireframe: true,
+            wireframe: false,
             side: 0,
             color: color,
         });
@@ -81,8 +71,7 @@ export class App {
         g.setIndex(new THREE.Uint16BufferAttribute(indices, 1));
 
         const m = new THREE.MeshBasicMaterial({
-            wireframe: true,
-            side: 0,
+            wireframe: false,
             color: params.color ? params.color : 0xffffff,
             transparent: params.opacity ? true : false,
             opacity: params.opacity ? params.opacity : 0.0
@@ -97,79 +86,17 @@ export class App {
         this.scene.add(mesh);
     }
 
-    private showMeshlets(meshlets: Meshlet[], position: number[], scale?: number[]) {
+    private showMeshlets(meshlets: Meshlet[], position: number[], scale?: number[], color?: number) {
         for (let i = 0; i < meshlets.length; i++) {
-            const meshlet_color = App.rand(i) * 0xffffff;
-            this.createMesh(meshlets[i].vertices, meshlets[i].indices, { color: meshlet_color, position: position, scale: scale });
+            const meshlet_color = color ? color : App.rand(i) * 0xffffff;
+            this.createMesh(meshlets[i].vertices_raw, meshlets[i].indices_raw, { color: meshlet_color, position: position, scale: scale });
         }
     }
 
-    private createGeometryFromMeshlet(meshlet: Meshlet): THREE.BufferGeometry {
-        const g = new THREE.BufferGeometry();
-        g.setAttribute("position", new THREE.Float32BufferAttribute(meshlet.vertices, 3));
-        g.setIndex(new THREE.Uint32BufferAttribute(meshlet.indices, 1));
-        return g;
-    }
-
-    private createMeshletFromGeometry(geometry: THREE.BufferGeometry): Meshlet {
-        return {
-            vertices: geometry.getAttribute("position").array,
-            vertex_count: geometry.getAttribute("position").array.length / 3,
-            indices: geometry.getIndex().array,
-            index_count: geometry.getIndex().array.length,
-        }
-    }
 
     public async processObj(objURL: string) {
-        // const dag = new DAG();
-        // dag.addEdge('A', 'B');
-        // dag.addEdge('C', 'B');
-        // dag.addEdge('B', 'D');
-        // dag.addEdge('B', 'E');
-        // dag.addEdge('D', 'F');
-        // dag.addEdge('E', 'G');
-        // dag.addEdge('D', 'G');
-        // dag.addEdge('E', 'F');
-
-
-        const dag4 = new DAG();
-
-        // dag4.add({id: "A", tag: "LOD0", data: "ADATA"}, {id: "C", tag: "LOD1", data: "CDATA"});
-        // dag4.add({id: "A", tag: "LOD0", data: "ADATA"}, {id: "C", tag: "LOD1", data: "CDATA"});
-
-        // dag4.add({id: "A", tag: "LOD0", data: "ADATA"}, {id: "F", tag: "LOD2", data: "FDATA"});
-        // dag4.add({id: "B", tag: "LOD0", data: "BDATA"}, {id: "D", tag: "LOD1", data: "DDATA"});
-        // dag4.add({id: "B", tag: "LOD0", data: "BDATA"}, {id: "E", tag: "LOD1", data: "EDATA"});
-        // dag4.add({id: "C", tag: "LOD1", data: "CDATA"}, {id: "F", tag: "LOD2", data: "FDATA"});
-        // dag4.add({id: "D", tag: "LOD1", data: "DDATA"}, {id: "F", tag: "LOD2", data: "FDATA"});
-        // dag4.add({id: "D", tag: "LOD1", data: "DDATA"}, {id: "G", tag: "LOD2", data: "GDATA"});
-        // dag4.add({id: "E", tag: "LOD1", data: "EDATA"}, {id: "H", tag: "LOD2", data: "HDATA"});
-        // dag4.add({id: "F", tag: "LOD2", data: "FDATA"}, {id: "I", tag: "LOD3", data: "IDATA"});
-        // dag4.add({id: "G", tag: "LOD2", data: "GDATA"}, {id: "J", tag: "LOD3", data: "JDATA"});
-        // dag4.add({id: "H", tag: "LOD2", data: "HDATA"}, {id: "J", tag: "LOD3", data: "JDATA"});
-
-        // console.log("ewgweg", dag4);
-
-        // const dag4Dot = dag4.toDot();
-
-        // instance().then(viz => {
-        //     document.body.appendChild(viz.renderSVGElement(dag4Dot));
-        // });
-
-
-        //         // return;
         OBJLoaderIndexed.load(objURL, async (objMesh) => {
-            // // from three
 
-            // const mg = this.createGeometryFromMeshlet(simplified);
-            // const simplifyModifier =  new SimplifyModifier();
-            // const out = simplifyModifier.modify(mg, 4);
-            // console.log(mg)
-
-            // const outMeshlet = this.createMeshletFromGeometry(out);
-            // this.createMesh(outMeshlet.vertices, outMeshlet.indices, {position: [0.6, 0, 0], scale: [0.001, -0.001, 0.001], color: 0x00ff00});
-
-            // return;
             const objVertices = objMesh.vertices;
             const objIndices = objMesh.indices;
 
@@ -177,315 +104,276 @@ export class App {
             this.createMesh(objVertices, objIndices, { opacity: 0.2, position: [-0.3, 0, 0] });
 
 
-            async function step1_cluster(vertices: Float32Array, indices: Uint32Array): Promise<Meshlet[]> {
-                const meshlet_triangle_count = indices.length / 3 / 2;
-                const max_triangles = meshlet_triangle_count > 128 ? 128 : meshlet_triangle_count;
 
-                return await MeshletCreator.build(vertices, indices, max_triangles);
+            const dag4 = new DAG();
+            function addToDAG(fromMeshlets: Meshlet[], toMeshlets: Meshlet[], lod: number) {
+                for (let fromMeshlet of fromMeshlets) {
+                    for (let toMeshlet of toMeshlets) {
+                        dag4.add(
+                            { id: `${toMeshlet.id}`, data: toMeshlet, tag: `LOD${lod}` },
+                            { id: `${fromMeshlet.id}`, data: fromMeshlet, tag: `LOD${lod - 1}` }
+                        )
+                    }
+                }
             }
 
-            async function step2_group(meshlets: Meshlet[], nparts: number): Promise<Meshlet[][]> {
-                // Add meshlets to grouper, this allows for border checks
-                const meshletGrouper = new MeshletGrouper();
+            function indexCounter(meshlets: Meshlet[][] | Meshlet[]): number {
+                let count = 0;
                 for (let i = 0; i < meshlets.length; i++) {
-                    meshletGrouper.addMeshlet(meshlets[i]);
+                    if (meshlets[i] && meshlets[i].length) {
+                        for (let j = 0; j < meshlets[i].length; j++) {
+                            count += meshlets[i][j].indices.length;
+                        }
+                    }
+                    else {
+                        count += meshlets[i].indices_raw.length;
+                    }
                 }
+                return count;
+            }
 
-                // Get adjacent meshlets by checking shared vertices
-                const adjacencyList = meshletGrouper.buildAdjacentMeshletList(meshlets);
+
+            async function step1_cluster_metis(vertices: Float32Array, indices: Uint32Array, parts: number): Promise<Meshlet[]> {
+                const faces = MeshletGrouper.buildFacesFromIndices(indices);
+                const adjacencyMatrixList = MeshletGrouper.buildFaceAdjacencyMatrix(faces);
+                const groupPartitions = await METISWrapper.partition(adjacencyMatrixList, parts);
+                // console.warn("groupPartitions", groupPartitions)
+                const groupedMeshlets = MeshletGrouper.rebuildMeshletsFromGroupIndices(vertices, faces, groupPartitions);
+
+                const meshletsV3: Meshlet[] = [];
+                for (let i = 0; i < groupedMeshlets.length; i++) {
+                    const meshlet = new Meshlet(groupedMeshlets[i].vertices_raw, groupedMeshlets[i].indices_raw);
+                    meshletsV3.push(meshlet);
+                }
+                return meshletsV3;
+            }
+
+
+
+            // step2_group
+            function adjacencyList(meshlets: Meshlet[]): number[][] {
+
+                let vertexHashToMeshletMap: Map<string, number[]> = new Map();
+
+                for (let i = 0; i < meshlets.length; i++) {
+                    const meshlet = meshlets[i];
+                    for (let j = 0; j < meshlet.boundaryEdges.length; j++) {
+                        const boundaryEdge = meshlet.boundaryEdges[j];
+                        const edgeHash = meshlet.getEdgeHash(boundaryEdge);
+
+                        let meshletList = vertexHashToMeshletMap.get(edgeHash);
+                        if (!meshletList) meshletList = [];
+
+                        meshletList.push(i);
+                        vertexHashToMeshletMap.set(edgeHash, meshletList);
+                    }
+                }
+                const adjacencyList: Map<number, Set<number>> = new Map();
+
+                for (let [_, indices] of vertexHashToMeshletMap) {
+                    if (indices.length === 1) continue;
+
+                    for (let index of indices) {
+                        if (!adjacencyList.has(index)) {
+                            adjacencyList.set(index, new Set());
+                        }
+                        for (let otherIndex of indices) {
+                            if (otherIndex !== index) {
+                                adjacencyList.get(index).add(otherIndex);
+                            }
+                        }
+                    }
+                }
 
 
                 let adjacencyListArray: number[][] = [];
-                for (let entry of adjacencyList) {
-                    adjacencyListArray.push(entry[1]);
+                // Finally, to array
+                for (let [key, adjacents] of adjacencyList) {
+                    if (!adjacencyListArray[key]) adjacencyListArray[key] = [];
+
+                    adjacencyListArray[key].push(...Array.from(adjacents));
                 }
+                return adjacencyListArray;
+            }
 
-                // Use metis to partition the meshlets into groups
-                const groupPartitions = await METISWrapper.partition(adjacencyListArray, nparts);
-                console.log("adjacencyList", adjacencyList)
-                console.log("groupPartitions", groupPartitions)
+            function rebuildMeshletsFromGroupIndicesV3(meshlets: Meshlet[], groups: number[][]): Meshlet[][] {
+                let groupedMeshlets: Meshlet[][] = [];
 
-                // Aggregate
-                const groupedMeshlets: Meshlet[][] = [];
-                for (let i = 0; i < groupPartitions.length; i++) {
-                    const group = groupPartitions[i];
-                    const groupMeshlets: Meshlet[] = [];
-
-                    for (let j = 0; j < group.length; j++) {
-                        const meshletId = group[j];
+                for (let i = 0; i < groups.length; i++) {
+                    if (!groupedMeshlets[i]) groupedMeshlets[i] = [];
+                    for (let j = 0; j < groups[i].length; j++) {
+                        const meshletId = groups[i][j];
                         const meshlet = meshlets[meshletId];
-                        groupMeshlets.push(meshlet);
+                        groupedMeshlets[i].push(meshlet);
                     }
-                    groupedMeshlets.push(groupMeshlets);
                 }
                 return groupedMeshlets;
             }
 
-            // groups = metis output
-            async function step3_merge(groups: Meshlet[][]): Promise<Meshlet[]> {
-                const groupedMeshlets: Meshlet[] = [];
-                for (let i = 0; i < groups.length; i++) {
-                    const groupMeshlets = groups[i];
-                    const mergedMeshlet = MeshletMerger.merge(groupMeshlets);
+
+
+            const step = async (meshlets: Meshlet[], y: number, scale = [1,1,1]): Promise<Meshlet[]> => {
+                
+                this.showMeshlets(meshlets, [0.0,y,0], scale);
+                
+                const adj = adjacencyList(meshlets);
+    
+                const MinPartitionSize = 8;
+                const MaxPartitionSize = 32;
+                const TargetPartitionSize = ( MinPartitionSize + MaxPartitionSize ) / 2;
+                const TargetNumPartitions =  Math.ceil(adj.flat().length / TargetPartitionSize);
+
+                let grouped = [meshlets];
+                if (TargetNumPartitions > 1) {
+                    const groups = await METISWrapper.partition(adj, TargetNumPartitions);
+                    grouped = rebuildMeshletsFromGroupIndicesV3(meshlets, groups);
+                }
+    
+    
+                for (let i = 0; i < grouped.length; i++) {
+                    this.showMeshlets(grouped[i], [0.3, y, 0], scale, App.rand(i) * 0xffffff);
+                }
+    
+                async function step3_merge_v3(meshlets: Meshlet[]): Promise<Meshlet> {
+                    const mergedMeshlet = MeshletMerger.merge(meshlets);
                     // Clean duplicate vertices left by threejs and adjust indices
                     const cleanedMeshlet = await MeshletCleaner.clean(mergedMeshlet);
-                    groupedMeshlets.push(cleanedMeshlet);
+    
+                    return cleanedMeshlet;
                 }
-
-                return groupedMeshlets;
-            }
-
-            async function step4_simplify(meshlets: Meshlet[]): Promise<Meshlet[]> {
-                let simplifiedMeshletGroup: Meshlet[] = [];
-
-                for (let i = 0; i < meshlets.length; i++) {
-                    const groupedMeshlet = meshlets[i];
-                    const simplifiedGroup = await MeshletSimplifier_wasm.simplify(groupedMeshlet, groupedMeshlet.indices.length / 3 / 2);
-                    // const simplifiedGroup = await SimplifyModifierV4.simplify(groupedMeshlet, 0.5);
-                    simplifiedMeshletGroup.push(simplifiedGroup);
-                };
-                return simplifiedMeshletGroup;
-            }
-
-            async function step5_split(meshlets: Meshlet[]): Promise<Meshlet[][]> {
-                // Same as step1
-                let clusterizedMeshlets: Meshlet[][] = [];
-                for (let i = 0; i < meshlets.length; i++) {
-                    const meshlet = meshlets[i];
-                    const clusterizedMeshlet = await step1_cluster(meshlet.vertices, meshlet.indices);
-                    clusterizedMeshlets.push(clusterizedMeshlet);
+    
+                // merge
+                let merged: Meshlet[] = [];
+                for (let i = 0; i < grouped.length; i++) {
+                    merged.push(await step3_merge_v3(grouped[i]));
                 }
-
-                return clusterizedMeshlets;
-            }
-
-
-            // // Test vertices
-            // const positions = [
-            //     165, 224, 0, // 0
-            //     220, 190, 0, // 1
-            //     240, 270, 0, // 2
-            //     293, 260, 0, // 3
-            //     279, 318, 0, // 4
-            //     347, 287, 0, // 5
-            //     346, 344, 0, // 6
-            //     280, 407, 0, // 7
-            //     213, 355, 0, // 8
-            //     203, 427, 0, // 9
-            //     277, 473, 0, // 10
-            //     145, 404, 0, // 11
-            //     165, 295, 0, // 12
-            //     105, 324, 0, // 13
-            // ];
-
-            // const indices = [
-            //     0, 1, 2,
-            //     1, 3, 2,
-            //     2, 3, 4,
-            //     4, 3, 5,
-            //     4, 5, 6,
-            //     4, 6, 7,
-            //     4, 7, 8,
-            //     4, 8, 2,
-            //     2, 8, 12,
-            //     2, 12, 0,
-            //     0, 12, 13,
-            //     12, 11, 13,
-            //     12, 8, 11,
-            //     8, 9, 11,
-            //     8, 7, 9,
-            //     9, 7, 10
-            // ]
-
-            // this.createMesh(positions, indices, { color: 0xff0000, scale: [0.001, -0.001, 0.001] });
-
-            // const meshlet: Meshlet = {
-            //     vertices: positions,
-            //     vertex_count: positions.length / 3,
-            //     indices: indices,
-            //     index_count: indices.length
-            // }
-
-            // const simplified = await MeshletSimplifier_wasm.simplify(meshlet, meshlet.indices.length / 3 / 2);
-            // this.createMesh(simplified.vertices, simplified.indices, { position: [0.3, 0, 0], scale: [0.001, -0.001, 0.001], color: 0x0000ff });
-
-
-            // const split = await step5_split([simplified]);
-
-            // console.log(split)
-            // this.showMeshlets(split[0], [0.6, 0, 0], [0.001, -0.001, 0.001]);
-            // return;
-
-
-            const testMeshes = [
-                {
-                    color: "red",
-                    scale: [0.001, -0.001, 0.001],
-                    positions: [
-                        165, 224, 0, // 0 = 0
-                        220, 190, 0, // 1 = 1
-                        240, 270, 0, // 2 = 2
-                        165, 295, 0, // 12 = 3
-                        213, 355, 0, // 8 = 4
-                        279, 318, 0, // 4 = 5
-                    ],
-                    indices: [
-                        0, 1, 2,
-                        0, 2, 3,
-                        3, 2, 4,
-                        4, 2, 5
-                    ]
-                },
-                {
-                    color: "green",
-                    scale: [0.001, -0.001, 0.001],
-                    positions: [
-                        220, 190, 0, // 1 = 0
-                        240, 270, 0, // 2 = 1
-                        293, 260, 0, // 3 = 2
-                        279, 318, 0, // 4 = 3
-                        347, 287, 0, // 5 = 4
-                        346, 344, 0, // 6 = 5
-
-                    ],
-                    indices: [
-                        0, 2, 1,
-                        1, 2, 3,
-                        2, 4, 3,
-                        3, 4, 5
-                    ]
-                },
-                {
-                    color: "blue",
-                    scale: [0.001, -0.001, 0.001],
-                    positions: [
-                        279, 318, 0, // 4 = 0
-                        346, 344, 0, // 6 = 1
-                        280, 407, 0, // 7 = 2
-                        213, 355, 0, // 8 = 3
-                        203, 427, 0, // 9 = 4
-                        277, 473, 0, // 10 = 5
-                    ],
-                    indices: [
-                        0, 1, 2,
-                        0, 2, 3,
-                        3, 2, 4,
-                        2, 5, 4
-                    ]
-                },
-                {
-                    color: "yellow",
-                    scale: [0.001, -0.001, 0.001],
-                    positions: [
-                        165, 224, 0, // 0 = 0
-                        165, 295, 0, // 12 = 1
-                        105, 324, 0, // 13 = 2
-                        213, 355, 0, // 8 = 3
-                        145, 404, 0, // 11 = 4
-                        203, 427, 0, // 9 = 5
-                    ],
-                    indices: [
-                        0, 1, 2,
-                        1, 4, 2,
-                        4, 1, 3,
-                        4, 3, 5
-                    ]
+                this.showMeshlets(merged, [0.6, y, 0], scale);
+    
+    
+    
+    
+    
+                // simplify
+                let simplified: Meshlet[] = [];
+                for (let i = 0; i < merged.length; i++) {
+                    const d = Math.max(merged[i].indices_raw.length * 0.5, 128 * 3);
+                    const simplifiedMeshlet = await MeshletSimplifier_wasm.simplify(merged[i], d);
+                    simplified.push(simplifiedMeshlet);
                 }
-            ];
+                this.showMeshlets(simplified, [0.9, y, 0], scale);
+    
+                // split
+                const splitMeshlets: Meshlet[] = [];
 
-            for (let i = 0; i < testMeshes.length; i++) {
-                const testMesh = testMeshes[i];
-                this.createMesh(testMesh.positions, testMesh.indices, {color: testMesh.color, scale: testMesh.scale});
-            }
-
-            // Convert to meshlets
-            let meshlets: Meshlet[] = [];
-            for (let i = 0; i < testMeshes.length; i++) {
-                const tm = testMeshes[i];
-                meshlets.push({
-                    vertices: tm.positions,
-                    vertex_count: tm.positions.length / 3,
-                    indices: tm.indices,
-                    index_count: tm.indices.length,
-                })
-            }
-
-            console.log("meshlets", meshlets)
-
-            // this.showMeshlets(meshlets, [0,0,0], [0.001, -0.001, 0.001]);
-
-            const groupedMeshlets = await step2_group(meshlets, 2);
-
-            for (let i = 0; i < groupedMeshlets.length; i++) {
-                const groupKey = `GROUP-${i}`;
-                const group = groupedMeshlets[i];
-
-                for (let j = 0; j < group.length; j++) {
-                    const meshlet = group[j];
-                    const meshletId = meshlets.indexOf(meshlet);
-                    const meshletKey = `MESHLET-${j}`;
-
-                    dag4.add(
-                        {id: groupKey, data: "", tag: "LOD0"},
-                        {id: meshletKey, data: meshlet, tag: "LOD0"}
-                    )
+                for (let i = 0; i < simplified.length; i++) {
+                    const parts = Math.ceil(simplified[i].indices_raw.length / 3 / 128);
+                    if (parts <= 1) {
+                        splitMeshlets.push(simplified[i]);
+                        continue;
+                    }
+                    const split = await step1_cluster_metis(simplified[i].vertices_raw, simplified[i].indices_raw, parts);
+                    splitMeshlets.push(...split);
                 }
+    
+                this.showMeshlets(splitMeshlets, [1.2, y, 0], scale);
+
+                return splitMeshlets;
             }
 
-            const mergedMeshlets = await step3_merge([meshlets]);
-            this.showMeshlets(mergedMeshlets, [0.3, 0, 0], [0.001, -0.001, 0.001]);
-            console.log("mergedMeshlets", mergedMeshlets);
+            const meshletsV3 = await step1_cluster_metis(objVertices, objIndices, objIndices.length / 3 / 128);
 
-            const simplifiedMeshlets = await step4_simplify(mergedMeshlets);
-            this.showMeshlets(simplifiedMeshlets, [0.6, 0, 0], [0.001, -0.001, 0.001]);
+            // // const out1 = await step(meshletsV3, 0.0);
+            // // const out2 = await step(out1, -0.3);
+            // // const out3 = await step(out2, -0.6);
+            // // const out4 = await step(out3, -0.9);
+            // // const out5 = await step(out4, -1.2);
+            // // const out6 = await step(out5, -1.5);
+            // // const out7 = await step(out6, -1.8);
 
-            const split = await step5_split(simplifiedMeshlets);
+            let input = meshletsV3;
+            let y = 0.0;
+            for (let i = 0; i < 10; i++) {
+                const output = await step(input, y);
+                console.log(input.length, output.length)
+                console.log(indexCounter(input) / 3, indexCounter(output) / 3);
+                console.log("\n")
 
-            this.showMeshlets(split[0], [0.9, 0, 0], [0.001, -0.001, 0.001]);
+                addToDAG(input, output, i+1);
+                if (output.length === 1) {
+                    break;
+                }
+                input = output;
+                y-=0.3;
+            }
+
 
             instance().then(viz => {
-                document.body.appendChild(viz.renderSVGElement(dag4.toDot()));
+                const diagram = dag4.toDot();
+                document.body.appendChild(viz.renderSVGElement(diagram));
+
+                const canvas = document.createElement("canvas");
+                canvas.width = 500;
+                canvas.height = 500;
+                const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;;
+
+                console.log(dag4)
+
+                let y = 200;
+                for (let lod of Object.keys(dag4.tagToNode)) {
+                    const nodes = dag4.tagToNode[lod];
+
+                    let x = canvas.width * 0.5 - nodes.length * 7.5;
+                    for (let i = 0; i < nodes.length; i++) {
+                        ctx.beginPath();
+                        ctx.arc(x + i * 5, y, 5, 0, 180 / Math.PI);
+                        ctx.closePath();
+                        ctx.stroke();
+                        x += 10;
+
+                        console.log(x, y)
+                    }
+                    y += 15;
+
+                }
+                document.body.appendChild(canvas);
+
+
+
+                console.log(dag4)
             });
 
 
 
 
 
-
-
-            // const clusterizedMeshlets = await step1_cluster(objVertices, objIndices);
-            // this.showMeshlets(clusterizedMeshlets, [-0.15, 0, 0]);
-
-            // console.log(clusterizedMeshlets)
-
-            // const groupedMeshlets = await step2_group(clusterizedMeshlets);
-            // // Show grouped meshlets, note that they are not merged yet
-            // for (let i = 0; i < groupedMeshlets.length; i++) {
-            //     const meshlet_color = App.rand(i) * 0xffffff;
-
-            //     for (let j = 0; j < groupedMeshlets[i].length; j++) {
-            //         const meshlet = groupedMeshlets[i][j];
-            //         this.createMesh(meshlet.vertices, meshlet.indices, { color: meshlet_color });
-            //     }
+            // const testMeshlets: Meshlet[] = [];
+            // for (let i = 0; i < TEST_MESHES.length; i++) {
+            //     const meshlet = new Meshlet(TEST_MESHES[i].positions, TEST_MESHES[i].indices);
+            //     testMeshlets.push(meshlet);
             // }
 
-            // const mergedMeshlets = await step3_merge(groupedMeshlets);
-            // this.showMeshlets(mergedMeshlets, [0.15, 0, 0]);
+            // const scale = [0.001, -0.001, 0.001];
+            // this.showMeshlets(testMeshlets, [0,0,0], scale);
 
-            // const simplifiedMeshlets = await step4_simplify(mergedMeshlets);
-            // this.showMeshlets(simplifiedMeshlets, [0.3, 0, 0]);
+            // const out1 = await step(testMeshlets, 0.0, scale);
 
-            // const splitMeshlets = await step5_split(simplifiedMeshlets);
 
-            // // Show split meshlets, note that they are not merged yet
-            // for (let i = 0; i < splitMeshlets.length; i++) {
+            // const testm = await step1_cluster_metis(objVertices, objIndices, 2);
 
-            //     for (let j = 0; j < splitMeshlets[i].length; j++) {
-            //         const meshlet_color = App.rand(i + j) * 0xffffff;
-            //         const meshlet = splitMeshlets[i][j];
-            //         this.createMesh(meshlet.vertices, meshlet.indices, { color: meshlet_color, position: [0.45, 0, 0] });
-            //     }
+            // const test = testm[1];
+            // this.showMeshlets([test], [0,0,0]);
+
+            
+            // let input = test;
+            // for (let i = 0; i < 20; i++) {
+            //     // const t = 128 * 3;
+            //     const t = Math.max(input.indices_raw.length * 0.5, 128 * 3);
+            //     console.log("TargetNumTris", input.indices_raw.length, t)
+            //     const output = await MeshletSimplifier_wasm.simplify(input, t);
+            //     console.log(input.triangles.length, output.triangles.length);
+            //     input = output;
             // }
+            
         })
     }
 
