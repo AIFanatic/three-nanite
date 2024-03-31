@@ -23925,7 +23925,7 @@ var App = class {
         const addedMeshletsGroup = new Group();
         this.scene.add(addedMeshletsGroup);
         const updateMeshletsGroup = (group, meshlets) => {
-          const meshes = this.showMeshlets(meshlets, [0, 0.5, 0]);
+          const meshes = this.showMeshlets(meshlets, [0, 0.3, 0]);
           this.scene.remove(...meshes);
           group.clear();
           if (meshlets.length === 0)

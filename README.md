@@ -18,6 +18,13 @@ Photo description:
 <img src="./screenshots/showcase2.png">
 </p>
 
+<p align="center">
+<img src="./screenshots/showcase3.png">
+</p>
+
+Photo description:
+Meshlets shown are the red ones, as long as the edges of the DAG don't cross there should be no cracks and a dynamic LOD is achieved (1414628 and 8154144 are simplified versions of their children).
+
 ## Description
 An attempt at reproducing a dynamic LOD in threejs similarly to unreal's nanite.
 Very far from it but nonetheless a start.
