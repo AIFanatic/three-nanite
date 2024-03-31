@@ -13,7 +13,7 @@ emcc \
 ./src/clusterizer.cpp ./src/simplifier.cpp ./src/indexgenerator.cpp \
 -o ./js/meshoptimizer.js
 
-cp ./js/meshoptimizer.js /Users/mac/Downloads/temp/three-nanite/src/utils/
-cp ./js/meshoptimizer.wasm /Users/mac/Downloads/temp/three-nanite/src/utils/
+cp ./js/meshoptimizer.js ../utils/
+cp ./js/meshoptimizer.wasm ../utils/
 
-cp ./js/meshoptimizer.wasm /Users/mac/Downloads/temp/three-nanite/dist/
+cp ./js/meshoptimizer.wasm ../../dist/

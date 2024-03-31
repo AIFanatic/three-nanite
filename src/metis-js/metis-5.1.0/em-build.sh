@@ -15,4 +15,4 @@ emcc -o metis.js -O3 -s WASM=1 \
     wasm.c \
     ./{GKlib,libmetis}/*.c
 
-cp ./metis.wasm /Users/mac/Downloads/temp/three-nanite/dist/
+cp ./metis.wasm ../../../dist/
