@@ -12088,8 +12088,8 @@ function WebGLLights(extensions, capabilities) {
     state.ambient[0] = r;
     state.ambient[1] = g2;
     state.ambient[2] = b;
-    const hash = state.hash;
-    if (hash.directionalLength !== directionalLength || hash.pointLength !== pointLength || hash.spotLength !== spotLength || hash.rectAreaLength !== rectAreaLength || hash.hemiLength !== hemiLength || hash.numDirectionalShadows !== numDirectionalShadows || hash.numPointShadows !== numPointShadows || hash.numSpotShadows !== numSpotShadows) {
+    const hash2 = state.hash;
+    if (hash2.directionalLength !== directionalLength || hash2.pointLength !== pointLength || hash2.spotLength !== spotLength || hash2.rectAreaLength !== rectAreaLength || hash2.hemiLength !== hemiLength || hash2.numDirectionalShadows !== numDirectionalShadows || hash2.numPointShadows !== numPointShadows || hash2.numSpotShadows !== numSpotShadows) {
       state.directional.length = directionalLength;
       state.spot.length = spotLength;
       state.rectArea.length = rectAreaLength;
@@ -12104,14 +12104,14 @@ function WebGLLights(extensions, capabilities) {
       state.directionalShadowMatrix.length = numDirectionalShadows;
       state.pointShadowMatrix.length = numPointShadows;
       state.spotShadowMatrix.length = numSpotShadows;
-      hash.directionalLength = directionalLength;
-      hash.pointLength = pointLength;
-      hash.spotLength = spotLength;
-      hash.rectAreaLength = rectAreaLength;
-      hash.hemiLength = hemiLength;
-      hash.numDirectionalShadows = numDirectionalShadows;
-      hash.numPointShadows = numPointShadows;
-      hash.numSpotShadows = numSpotShadows;
+      hash2.directionalLength = directionalLength;
+      hash2.pointLength = pointLength;
+      hash2.spotLength = spotLength;
+      hash2.rectAreaLength = rectAreaLength;
+      hash2.hemiLength = hemiLength;
+      hash2.numDirectionalShadows = numDirectionalShadows;
+      hash2.numPointShadows = numPointShadows;
+      hash2.numSpotShadows = numSpotShadows;
       state.version = nextVersion++;
     }
   }
@@ -18353,7 +18353,7 @@ var BetterStats = class {
     msText.innerHTML = "WebGLRenderer";
     msDiv.appendChild(msText);
     this.msTexts = [];
-    const nLines = 9;
+    const nLines = 10;
     for (var i2 = 0; i2 < nLines; i2++) {
       this.msTexts[i2] = document.createElement("div");
       this.msTexts[i2].style.cssText = "color:#f00;background-color:#311;font-family:Helvetica,Arial,sans-serif;font-size:9px;font-weight:bold;line-height:15px";
@@ -18380,92 +18380,199 @@ var BetterStats = class {
     this.msTexts[i2++].textContent = "FPS: " + Math.floor(this.fps);
     this.msTexts[i2++].textContent = "Triangles: " + Math.floor(this.renderer.info.render.triangles);
     this.msTexts[i2++].textContent = "Points: " + this.renderer.info.render.points;
+    this.msTexts[i2++].textContent = "Lines: " + this.renderer.info.render.lines;
+  }
+};
+
+// src/Meshlet.ts
+function hash(co) {
+  function fract(n) {
+    return n % 1;
+  }
+  return fract(Math.sin((co + 1) * 12.9898) * 43758.5453);
+}
+var seed = 0;
+function seedRandom() {
+  return Math.abs(hash(seed += 1));
+}
+var Vertex = class {
+  constructor(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+  }
+};
+var Triangle2 = class {
+  constructor(a, b, c) {
+    this.a = a;
+    this.b = b;
+    this.c = c;
+  }
+};
+var Edge = class {
+  constructor(fromIndex, toIndex) {
+    this.fromIndex = fromIndex;
+    this.toIndex = toIndex;
+  }
+  equal(other) {
+    return this.fromIndex === other.fromIndex && this.toIndex === other.toIndex;
+  }
+  isAdjacent(other) {
+    return this.fromIndex === other.fromIndex || this.fromIndex === other.toIndex || this.toIndex === other.fromIndex || this.toIndex === other.toIndex;
+  }
+};
+var Meshlet = class {
+  constructor(vertices, indices) {
+    this.vertices_raw = vertices;
+    this.indices_raw = indices;
+    this.vertices = this.buildVertexMap(vertices);
+    this.triangles = this.buildTriangleMap(indices);
+    this.edges = this.buildEdgeMap(this.triangles);
+    this.boundaryEdges = this.getBoundary(this.edges);
+    this.id = Math.floor(seedRandom() * 1e7);
+  }
+  buildVertexMap(vertices) {
+    let vertex2 = [];
+    for (let i2 = 0; i2 < vertices.length; i2 += 3) {
+      vertex2.push(new Vertex(vertices[i2 + 0], vertices[i2 + 1], vertices[i2 + 2]));
+    }
+    return vertex2;
+  }
+  buildTriangleMap(indices) {
+    let triangles = [];
+    for (let i2 = 0; i2 < indices.length; i2 += 3) {
+      triangles.push(new Triangle2(indices[i2 + 0], indices[i2 + 1], indices[i2 + 2]));
+    }
+    return triangles;
+  }
+  buildEdgeMap(triangles) {
+    let edges = [];
+    for (let i2 = 0; i2 < triangles.length; i2++) {
+      const triangle = triangles[i2];
+      const face = [triangle.a, triangle.b, triangle.c];
+      for (let i3 = 0; i3 < 3; i3++) {
+        const startIndex = face[i3];
+        const endIndex = face[(i3 + 1) % 3];
+        edges.push(new Edge(
+          Math.min(startIndex, endIndex),
+          Math.max(startIndex, endIndex)
+        ));
+      }
+    }
+    return edges;
+  }
+  getBoundary(edges) {
+    let counts = new Array(edges.length).fill(0);
+    for (let i2 = 0; i2 < edges.length; i2++) {
+      const a = edges[i2];
+      for (let j = 0; j < edges.length; j++) {
+        const b = edges[j];
+        if (a.fromIndex === b.fromIndex && a.toIndex === b.toIndex) {
+          counts[i2]++;
+        }
+      }
+    }
+    let boundaryEdges = [];
+    for (let i2 = 0; i2 < counts.length; i2++) {
+      if (counts[i2] == 1) {
+        boundaryEdges.push(edges[i2]);
+      }
+    }
+    return boundaryEdges;
+  }
+  getEdgeVertices(edge) {
+    const from = edge.fromIndex;
+    const to = edge.toIndex;
+    return [this.vertices[from], this.vertices[to]];
+  }
+  getEdgeHash(edge) {
+    function hashVertex(vertex2) {
+      return `${vertex2.x},${vertex2.y},${vertex2.z}`;
+    }
+    const edgeVertices = this.getEdgeVertices(edge);
+    const fromVertexHash = hashVertex(edgeVertices[0]);
+    const toVertexHash = hashVertex(edgeVertices[1]);
+    const edgeHash = `${fromVertexHash}:${toVertexHash}`;
+    return edgeHash;
   }
 };
 
 // src/MeshletGrouper.ts
 var MeshletGrouper = class {
-  constructor() {
-    this.indexed_by_vertex_id = /* @__PURE__ */ new Map();
-  }
-  static rand(co) {
-    function fract(n) {
-      return n % 1;
+  static buildFacesFromIndices(indices) {
+    const faces = [];
+    for (let j = 0; j < indices.length; j += 3) {
+      const f0 = indices[j];
+      const f1 = indices[j + 1];
+      const f2 = indices[j + 2];
+      faces.push([f0, f1, f2]);
     }
-    function dot(v1, v2) {
-      return v1[0] * v2[0] + v1[1] * v2[1];
-    }
-    return fract(Math.sin(dot(co, [12.9898, 78.233])) * 43758.5453);
+    return faces;
   }
-  static getVertexKey(x, y, z) {
-    return `${x},${y},${z}`;
+  static getFacesFromIndices(faceIndices, faces) {
+    return faceIndices.map((faceIndex) => faces[faceIndex]);
   }
-  addMeshlet(meshlet) {
-    for (let i2 = 0; i2 < meshlet.vertices.length; i2 += 3) {
-      const vertex_id = MeshletGrouper.getVertexKey(meshlet.vertices[i2 + 0], meshlet.vertices[i2 + 1], meshlet.vertices[i2 + 2]);
-      let index_array = this.indexed_by_vertex_id.get(vertex_id);
-      if (!index_array) {
-        index_array = [];
-      }
-      if (index_array.indexOf(meshlet) === -1) {
-        index_array.push(meshlet);
-        this.indexed_by_vertex_id.set(vertex_id, index_array);
-      }
-    }
-  }
-  getSharedVertices(meshlet) {
-    let borderVertexIds = [];
-    for (let i2 = 0; i2 < meshlet.vertices.length; i2 += 3) {
-      const vertex_id = MeshletGrouper.getVertexKey(meshlet.vertices[i2 + 0], meshlet.vertices[i2 + 1], meshlet.vertices[i2 + 2]);
-      const adjacentMeshlets = this.indexed_by_vertex_id.get(vertex_id);
-      if (adjacentMeshlets && adjacentMeshlets.length > 1) {
-        borderVertexIds.push(i2);
+  static buildFaceAdjacencyMatrix(faces) {
+    const edgeToFaceMap = /* @__PURE__ */ new Map();
+    for (let faceIndex = 0; faceIndex < faces.length; faceIndex++) {
+      const face = faces[faceIndex];
+      for (let i2 = 0; i2 < 3; i2++) {
+        const startIndex = face[i2];
+        const endIndex = face[(i2 + 1) % 3];
+        const edgeKey = `${Math.min(startIndex, endIndex)}:${Math.max(startIndex, endIndex)}`;
+        let edgeArray = edgeToFaceMap.get(edgeKey);
+        if (!edgeArray)
+          edgeArray = [];
+        edgeArray.push(faceIndex);
+        edgeToFaceMap.set(edgeKey, edgeArray);
       }
     }
-    return borderVertexIds;
+    const faceAdjacencyList = faces.map(() => []);
+    for (let [_, connectedFaces] of edgeToFaceMap) {
+      if (connectedFaces.length !== 2)
+        continue;
+      const [faceA, faceB] = connectedFaces;
+      faceAdjacencyList[faceA].push(faceB);
+      faceAdjacencyList[faceB].push(faceA);
+    }
+    return faceAdjacencyList;
   }
-  getAdjacentMeshlets(meshlet) {
-    let adjacentMeshlets = [];
-    const borderVertexIds = this.getSharedVertices(meshlet);
-    for (let i2 = 0; i2 < borderVertexIds.length; i2++) {
-      const vertex_id = borderVertexIds[i2];
-      const vertex_key = MeshletGrouper.getVertexKey(meshlet.vertices[vertex_id + 0], meshlet.vertices[vertex_id + 1], meshlet.vertices[vertex_id + 2]);
-      const vertexAdjacentMeshlets = this.indexed_by_vertex_id.get(vertex_key);
-      if (vertexAdjacentMeshlets && vertexAdjacentMeshlets.length > 1) {
-        for (let j = 0; j < vertexAdjacentMeshlets.length; j++) {
-          const adjacentMeshlet = vertexAdjacentMeshlets[j];
-          if (adjacentMeshlet === meshlet)
-            continue;
-          if (adjacentMeshlets.indexOf(adjacentMeshlet) !== -1)
-            continue;
-          adjacentMeshlets.push(adjacentMeshlet);
+  static cleanOrphanedVertices(_vertices, _faces) {
+    const vertices = MeshletGrouper.buildFacesFromIndices(_vertices);
+    const faces = MeshletGrouper.buildFacesFromIndices(_faces);
+    const vertexMap = /* @__PURE__ */ new Map();
+    let cleanedVertices = [];
+    let cleanedFaces = faces.map((face) => {
+      return face.map((vertexIndex) => {
+        if (vertexMap.has(vertexIndex)) {
+          return vertexMap.get(vertexIndex);
+        } else {
+          const newVertexIndex = cleanedVertices.length;
+          if (vertices[vertexIndex]) {
+            cleanedVertices.push(vertices[vertexIndex]);
+            vertexMap.set(vertexIndex, newVertexIndex);
+            return newVertexIndex;
+          }
         }
-      }
-    }
-    return adjacentMeshlets;
+      });
+    });
+    return {
+      cleanedVertices: cleanedVertices.flat(),
+      cleanedFaces: cleanedFaces.flat()
+    };
   }
-  buildAdjacentMeshletList(meshlets) {
-    let adjacencyList = /* @__PURE__ */ new Map();
-    for (let meshletId = 0; meshletId < meshlets.length; meshletId++) {
-      const meshlet = meshlets[meshletId];
-      const adjacentMeshlets = this.getAdjacentMeshlets(meshlet);
-      let adjacencyArray = adjacencyList.get(meshletId);
-      if (!adjacencyArray)
-        adjacencyArray = [];
-      for (let j = 0; j < adjacentMeshlets.length; j++) {
-        const adjacentMeshlet = adjacentMeshlets[j];
-        const adjacentMeshletId = meshlets.indexOf(adjacentMeshlet);
-        if (adjacentMeshletId === -1)
-          throw Error("Could not find adjacentMeshletId in meshlets, shouldn't happen");
-        if (meshletId === adjacentMeshletId)
-          continue;
-        if (adjacencyArray.indexOf(adjacentMeshletId) !== -1)
-          continue;
-        adjacencyArray.push(adjacentMeshletId);
-      }
-      adjacencyList.set(meshletId, adjacencyArray);
+  static rebuildMeshletsFromGroupIndices(vertices, faces, groups) {
+    let groupsByFaces = new Array(groups.length);
+    for (let i2 = 0; i2 < groups.length; i2++) {
+      groupsByFaces[i2] = MeshletGrouper.getFacesFromIndices(groups[i2], faces).flat();
     }
-    return adjacencyList;
+    let groupedMeshlets = [];
+    for (let i2 = 0; i2 < groupsByFaces.length; i2++) {
+      const { cleanedVertices, cleanedFaces } = MeshletGrouper.cleanOrphanedVertices(vertices, groupsByFaces[i2]);
+      const meshlet = new Meshlet(Float32Array.from(cleanedVertices), Uint32Array.from(cleanedFaces));
+      groupedMeshlets.push(meshlet);
+    }
+    return groupedMeshlets;
   }
 };
 
@@ -18514,16 +18621,16 @@ var OBJLoaderIndexed = class {
         const triangles = OBJLoaderIndexed.triangulate(elements);
         for (const triangle of triangles) {
           for (let j = 0, eleLen = triangle.length; j < eleLen; j++) {
-            const hash = triangle[j] + "," + currentMaterialIndex;
-            if (hash in unpacked.hashindices) {
-              unpacked.indices[currentObjectByMaterialIndex].push(unpacked.hashindices[hash]);
+            const hash2 = triangle[j] + "," + currentMaterialIndex;
+            if (hash2 in unpacked.hashindices) {
+              unpacked.indices[currentObjectByMaterialIndex].push(unpacked.hashindices[hash2]);
             } else {
               const vertex2 = triangle[j].split("/");
               unpacked.verts.push(+verts[(+vertex2[0] - 1) * 3 + 0]);
               unpacked.verts.push(+verts[(+vertex2[0] - 1) * 3 + 1]);
               unpacked.verts.push(+verts[(+vertex2[0] - 1) * 3 + 2]);
-              unpacked.hashindices[hash] = unpacked.index;
-              unpacked.indices[currentObjectByMaterialIndex].push(unpacked.hashindices[hash]);
+              unpacked.hashindices[hash2] = unpacked.index;
+              unpacked.indices[currentObjectByMaterialIndex].push(unpacked.hashindices[hash2]);
               unpacked.index += 1;
             }
           }
@@ -18537,1547 +18644,31 @@ var OBJLoaderIndexed = class {
   }
 };
 
-// src/utils/MeshletBuilder.ts
-function assert2(value) {
-  if (!value)
-    throw Error(`Assert failed: ${value}`);
-}
-var Cone = class {
-  constructor(px, py, pz, nx, ny, nz) {
-    this.px = px;
-    this.py = py;
-    this.pz = pz;
-    this.nx = nx;
-    this.ny = ny;
-    this.nz = nz;
-  }
-};
-var KDNode = class {
-  constructor() {
-    this.split = 0;
-    this.index = 0;
-    this.axis = 0;
-    this.children = 0;
-  }
-};
-var _MeshletBuilder = class {
-  static buildTriangleAdjacency(adjacency, indices, index_count, vertex_count) {
-    const face_count = index_count / 3;
-    adjacency.counts = new Uint32Array(vertex_count);
-    adjacency.offsets = new Uint32Array(vertex_count);
-    adjacency.data = new Uint32Array(index_count);
-    for (let i2 = 0; i2 < index_count; ++i2) {
-      if (indices[i2] < vertex_count) {
-        adjacency.counts[indices[i2]]++;
-      } else {
-        throw new Error(`Index out of bounds: ${indices[i2]} is not less than vertexCount ${vertex_count}`);
-      }
-    }
-    let offset = 0;
-    for (let i2 = 0; i2 < vertex_count; ++i2) {
-      adjacency.offsets[i2] = offset;
-      offset += adjacency.counts[i2];
-    }
-    if (offset !== index_count) {
-      throw new Error(`Offset ${offset} does not equal indexCount ${index_count}`);
-    }
-    for (let i2 = 0; i2 < face_count; ++i2) {
-      const a = indices[i2 * 3 + 0];
-      const b = indices[i2 * 3 + 1];
-      const c = indices[i2 * 3 + 2];
-      adjacency.data[adjacency.offsets[a]++] = i2;
-      adjacency.data[adjacency.offsets[b]++] = i2;
-      adjacency.data[adjacency.offsets[c]++] = i2;
-    }
-    for (let i2 = 0; i2 < vertex_count; ++i2) {
-      if (adjacency.offsets[i2] < adjacency.counts[i2]) {
-        throw new Error(`Offset for vertex ${i2} is less than its count`);
-      }
-      adjacency.offsets[i2] -= adjacency.counts[i2];
-    }
-  }
-  static getMeshletScore(distance2, spread, cone_weight, expected_radius) {
-    const cone = 1 - spread * cone_weight;
-    const cone_clamped = cone < 1e-3 ? 1e-3 : cone;
-    return (1 + Math.sqrt(distance2) / expected_radius * (1 - cone_weight)) * cone_clamped;
-  }
-  static getMeshletCone(acc, triangle_count) {
-    const result = new Cone(acc.px, acc.py, acc.pz, acc.nx, acc.ny, acc.nz);
-    const center_scale = triangle_count === 0 ? 0 : 1 / triangle_count;
-    result.px *= center_scale;
-    result.py *= center_scale;
-    result.pz *= center_scale;
-    const axis_length = result.nx * result.nx + result.ny * result.ny + result.nz * result.nz;
-    const axis_scale = axis_length === 0 ? 0 : 1 / Math.sqrt(axis_length);
-    result.nx *= axis_scale;
-    result.ny *= axis_scale;
-    result.nz *= axis_scale;
-    return result;
-  }
-  static computeTriangleCones(triangles, indices, index_count, vertex_positions, vertex_count, vertex_positions_stride) {
-    const vertex_stride_float = vertex_positions_stride / 4;
-    const face_count = index_count / 3;
-    let mesh_area = 0;
-    for (let i2 = 0; i2 < face_count; ++i2) {
-      const a = indices[i2 * 3 + 0], b = indices[i2 * 3 + 1], c = indices[i2 * 3 + 2];
-      if (a >= vertex_count || b >= vertex_count || c >= vertex_count) {
-        throw new Error("Index out of bounds");
-      }
-      const p0 = vertex_positions.subarray(vertex_stride_float * a, vertex_stride_float * a + 3);
-      const p1 = vertex_positions.subarray(vertex_stride_float * b, vertex_stride_float * b + 3);
-      const p2 = vertex_positions.subarray(vertex_stride_float * c, vertex_stride_float * c + 3);
-      const p10 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
-      const p20 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
-      const normalx = p10[1] * p20[2] - p10[2] * p20[1];
-      const normaly = p10[2] * p20[0] - p10[0] * p20[2];
-      const normalz = p10[0] * p20[1] - p10[1] * p20[0];
-      const area = Math.sqrt(normalx * normalx + normaly * normaly + normalz * normalz);
-      const invarea = area === 0 ? 0 : 1 / area;
-      triangles[i2] = new Cone(
-        (p0[0] + p1[0] + p2[0]) / 3,
-        (p0[1] + p1[1] + p2[1]) / 3,
-        (p0[2] + p1[2] + p2[2]) / 3,
-        normalx * invarea,
-        normaly * invarea,
-        normalz * invarea
-      );
-      mesh_area += area;
-    }
-    return mesh_area;
-  }
-  static finishMeshlet(meshlet, meshlet_triangles) {
-    let offset = meshlet.triangle_offset + meshlet.triangle_count * 3;
-    while (offset & 3) {
-      meshlet_triangles[offset++] = 0;
-    }
-  }
-  static appendMeshlet(meshlet, a, b, c, used, meshlets, meshlet_vertices, meshlet_triangles, meshlet_offset, max_vertices, max_triangles) {
-    let av = used[a];
-    let bv = used[b];
-    let cv = used[c];
-    let result = false;
-    let used_extra = (av === 255 ? 1 : 0) + (bv === 255 ? 1 : 0) + (cv === 255 ? 1 : 0);
-    if (meshlet.vertex_count + used_extra > max_vertices || meshlet.triangle_count >= max_triangles) {
-      const meshletCopy = {
-        triangle_count: meshlet.triangle_count,
-        triangle_offset: meshlet.triangle_offset,
-        vertex_count: meshlet.vertex_count,
-        vertex_offset: meshlet.vertex_offset
-      };
-      meshlets[meshlet_offset] = meshletCopy;
-      for (let j = 0; j < meshlet.vertex_count; ++j) {
-        used[meshlet_vertices[meshlet.vertex_offset + j]] = 255;
-      }
-      _MeshletBuilder.finishMeshlet(meshlet, meshlet_triangles);
-      meshlet.vertex_offset += meshlet.vertex_count;
-      meshlet.triangle_offset += meshlet.triangle_count * 3 + 3 & ~3;
-      meshlet.vertex_count = 0;
-      meshlet.triangle_count = 0;
-      result = true;
-    }
-    if (av === 255) {
-      av = meshlet.vertex_count;
-      meshlet_vertices[meshlet.vertex_offset + meshlet.vertex_count++] = a;
-      used[a] = av;
-    }
-    if (bv === 255) {
-      bv = meshlet.vertex_count;
-      meshlet_vertices[meshlet.vertex_offset + meshlet.vertex_count++] = b;
-      used[b] = bv;
-    }
-    if (cv === 255) {
-      cv = meshlet.vertex_count;
-      meshlet_vertices[meshlet.vertex_offset + meshlet.vertex_count++] = c;
-      used[c] = cv;
-    }
-    meshlet_triangles[meshlet.triangle_offset + meshlet.triangle_count * 3 + 0] = av;
-    meshlet_triangles[meshlet.triangle_offset + meshlet.triangle_count * 3 + 1] = bv;
-    meshlet_triangles[meshlet.triangle_offset + meshlet.triangle_count * 3 + 2] = cv;
-    meshlet.triangle_count++;
-    return result;
-  }
-  static getNeighborTriangle(meshlet, meshletCone, meshletVertices, indices, adjacency, triangles, liveTriangles, used, meshletExpectedRadius, coneWeight, outExtra) {
-    let bestTriangle = -1;
-    let bestExtra = 5;
-    let bestScore = Number.MAX_VALUE;
-    for (let i2 = 0; i2 < meshlet.vertex_count; ++i2) {
-      let index = meshletVertices[meshlet.vertex_offset + i2];
-      let neighborsStartIndex = adjacency.offsets[index];
-      let neighborsSize = adjacency.counts[index];
-      for (let j = 0; j < neighborsSize; ++j) {
-        let triangle = adjacency.data[neighborsStartIndex + j];
-        let a = indices[triangle * 3 + 0], b = indices[triangle * 3 + 1], c = indices[triangle * 3 + 2];
-        let extra = (used[a] === 255 ? 1 : 0) + (used[b] === 255 ? 1 : 0) + (used[c] === 255 ? 1 : 0);
-        if (extra !== 0) {
-          if (liveTriangles[a] === 1 || liveTriangles[b] === 1 || liveTriangles[c] === 1) {
-            extra = 0;
-          }
-          extra++;
-        }
-        if (extra > bestExtra) {
-          continue;
-        }
-        let score = 0;
-        if (meshletCone) {
-          const triCone = triangles[triangle];
-          const distance2 = (triCone.px - meshletCone.px) ** 2 + (triCone.py - meshletCone.py) ** 2 + (triCone.pz - meshletCone.pz) ** 2;
-          const spread = triCone.nx * meshletCone.nx + triCone.ny * meshletCone.ny + triCone.nz * meshletCone.nz;
-          score = _MeshletBuilder.getMeshletScore(distance2, spread, coneWeight, meshletExpectedRadius);
-        } else {
-          score = liveTriangles[a] + liveTriangles[b] + liveTriangles[c] - 3;
-        }
-        if (extra < bestExtra || score < bestScore) {
-          bestTriangle = triangle;
-          bestExtra = extra;
-          bestScore = score;
-        }
-      }
-    }
-    if (outExtra !== null) {
-      outExtra[0] = bestExtra;
-    }
-    return bestTriangle;
-  }
-  static kdtreePartition(indices, count, points, stride, axis, pivot) {
-    let m = 0;
-    for (let i2 = 0; i2 < count; ++i2) {
-      const v = points[indices[i2] * stride + axis];
-      const t = indices[m];
-      indices[m] = indices[i2];
-      indices[i2] = t;
-      m += v < pivot ? 1 : 0;
-    }
-    return m;
-  }
-  static kdtreeBuildLeaf(offset, nodes, nodeCount, indices, count) {
-    if (offset + count > nodeCount)
-      throw new Error("Offset + count must not exceed node count");
-    const result = nodes[offset];
-    result.index = indices[0];
-    result.axis = 3;
-    result.children = count - 1;
-    for (let i2 = 1; i2 < count; ++i2) {
-      const tail = nodes[offset + i2];
-      tail.index = indices[i2];
-      tail.axis = 3;
-      tail.children = 4294967295 >>> 2;
-    }
-    return offset + count;
-  }
-  static kdtreeBuild(offset, nodes, nodeCount, points, stride, indices, count, leafSize) {
-    if (count <= 0 || offset >= nodeCount)
-      throw new Error("Invalid input parameters");
-    if (count <= leafSize)
-      return _MeshletBuilder.kdtreeBuildLeaf(offset, nodes, nodeCount, indices, count);
-    const mean = new Float32Array(3);
-    const vars = new Float32Array(3);
-    let runc = 1, runs = 1;
-    for (let i2 = 0; i2 < count; ++i2, runc += 1, runs = 1 / runc) {
-      const point = points.subarray(indices[i2] * stride, indices[i2] * stride + 3);
-      for (let k = 0; k < 3; ++k) {
-        const delta = point[k] - mean[k];
-        mean[k] += delta * runs;
-        vars[k] += delta * (point[k] - mean[k]);
-      }
-    }
-    let axis = vars[0] >= vars[1] && vars[0] >= vars[2] ? 0 : vars[1] >= vars[2] ? 1 : 2;
-    const split = mean[axis];
-    const middle = _MeshletBuilder.kdtreePartition(indices, count, points, stride, axis, split);
-    if (middle <= leafSize / 2 || middle >= count - leafSize / 2) {
-      return _MeshletBuilder.kdtreeBuildLeaf(offset, nodes, nodeCount, indices, count);
-    }
-    const result = nodes[offset];
-    result.split = split;
-    result.axis = axis;
-    const nextOffset = _MeshletBuilder.kdtreeBuild(offset + 1, nodes, nodeCount, points, stride, indices, middle, leafSize);
-    result.children = nextOffset - offset - 1;
-    return _MeshletBuilder.kdtreeBuild(nextOffset, nodes, nodeCount, points, stride, indices.subarray(middle), count - middle, leafSize);
-  }
-  static kdtreeNearest(nodes, root, points, stride, emittedFlags, position, result) {
-    const node = nodes[root];
-    if (node.axis === 3) {
-      for (let i2 = 0; i2 <= node.children; ++i2) {
-        const index = nodes[root + i2].index;
-        if (emittedFlags[index])
-          continue;
-        const point = points.subarray(index * stride, index * stride + 3);
-        const distance2 = (point[0] - position[0]) * (point[0] - position[0]) + (point[1] - position[1]) * (point[1] - position[1]) + (point[2] - position[2]) * (point[2] - position[2]);
-        const distance = Math.sqrt(distance2);
-        if (distance < result.limit) {
-          result.index = index;
-          result.limit = distance;
-        }
-      }
-    } else {
-      const delta = position[node.axis] - node.split;
-      const first = delta <= 0 ? 0 : node.children;
-      const second = first ^ node.children;
-      _MeshletBuilder.kdtreeNearest(nodes, root + 1 + first, points, stride, emittedFlags, position, result);
-      if (Math.abs(delta) <= result.limit) {
-        _MeshletBuilder.kdtreeNearest(nodes, root + 1 + second, points, stride, emittedFlags, position, result);
-      }
-    }
-  }
-  static meshopt_buildMeshlets(meshlets, meshlet_vertices, meshlet_triangles, indices, index_count, vertex_positions, vertex_count, vertex_positions_stride, max_vertices, max_triangles, cone_weight) {
-    assert2(index_count % 3 == 0);
-    assert2(vertex_positions_stride >= 12 && vertex_positions_stride <= 256);
-    assert2(max_vertices >= 3 && max_vertices <= _MeshletBuilder.kMeshletMaxVertices);
-    assert2(max_triangles >= 1 && max_triangles <= _MeshletBuilder.kMeshletMaxTriangles);
-    assert2(max_triangles % 4 == 0);
-    assert2(cone_weight >= 0 && cone_weight <= 1);
-    const adjacency = { counts: new Uint32Array(0), offsets: new Uint32Array(0), data: new Uint32Array(0) };
-    _MeshletBuilder.buildTriangleAdjacency(adjacency, indices, index_count, vertex_count);
-    let live_triangles = adjacency.counts.slice();
-    const face_count = index_count / 3;
-    const emitted_flags = new Uint8Array(face_count);
-    const triangles = new Array(face_count);
-    const mesh_area = _MeshletBuilder.computeTriangleCones(triangles, indices, index_count, vertex_positions, vertex_count, vertex_positions_stride);
-    const triangle_area_avg = face_count == 0 ? 0 : mesh_area / face_count * 0.5;
-    const meshlet_expected_radius = Math.sqrt(triangle_area_avg * max_triangles) * 0.5;
-    const kdindices = new Array(face_count);
-    for (let i2 = 0; i2 < face_count; ++i2) {
-      kdindices[i2] = i2;
-    }
-    const trianglesArray = [];
-    for (let i2 = 0; i2 < triangles.length; i2++) {
-      trianglesArray.push(triangles[i2].px, triangles[i2].py, triangles[i2].pz, triangles[i2].nx, triangles[i2].ny, triangles[i2].nz);
-    }
-    const trianglesFloat32 = new Float32Array(trianglesArray);
-    const nodes = new Array(face_count * 2);
-    for (let i2 = 0; i2 < nodes.length; i2++) {
-      nodes[i2] = new KDNode();
-    }
-    _MeshletBuilder.kdtreeBuild(0, nodes, face_count * 2, trianglesFloat32, 6, new Uint32Array(kdindices), face_count, 8);
-    const used = new Uint8Array(vertex_count).fill(-1);
-    const meshlet = { triangle_offset: 0, triangle_count: 0, vertex_offset: 0, vertex_count: 0 };
-    let meshlet_offset = 0;
-    let meshlet_cone_acc = new Cone(0, 0, 0, 0, 0, 0);
-    for (; ; ) {
-      const meshlet_cone = _MeshletBuilder.getMeshletCone(meshlet_cone_acc, meshlet.triangle_count);
-      let best_extra = [0];
-      let best_triangle = _MeshletBuilder.getNeighborTriangle(meshlet, meshlet_cone, meshlet_vertices, indices, adjacency, triangles, live_triangles, used, meshlet_expected_radius, cone_weight, best_extra);
-      if (best_triangle != ~0 && (meshlet.vertex_count + best_extra[0] > max_vertices || meshlet.triangle_count >= max_triangles)) {
-        best_triangle = _MeshletBuilder.getNeighborTriangle(meshlet, null, meshlet_vertices, indices, adjacency, triangles, live_triangles, used, meshlet_expected_radius, 0, null);
-      }
-      if (best_triangle == ~0) {
-        const position = new Float32Array([meshlet_cone.px, meshlet_cone.py, meshlet_cone.pz]);
-        const result = { index: ~0, limit: 2e10 };
-        _MeshletBuilder.kdtreeNearest(nodes, 0, trianglesFloat32, 6, emitted_flags, position, result);
-        best_triangle = result.index;
-      }
-      if (best_triangle == ~0)
-        break;
-      const a = indices[best_triangle * 3 + 0], b = indices[best_triangle * 3 + 1], c = indices[best_triangle * 3 + 2];
-      assert2(a < vertex_count && b < vertex_count && c < vertex_count);
-      if (_MeshletBuilder.appendMeshlet(meshlet, a, b, c, used, meshlets, meshlet_vertices, meshlet_triangles, meshlet_offset, max_vertices, max_triangles)) {
-        meshlet_offset++;
-        meshlet_cone_acc = new Cone(0, 0, 0, 0, 0, 0);
-      }
-      live_triangles[a]--;
-      live_triangles[b]--;
-      live_triangles[c]--;
-      for (let k = 0; k < 3; ++k) {
-        const index = indices[best_triangle * 3 + k];
-        const neighbors_offset = adjacency.offsets[index];
-        const neighbors_size = adjacency.counts[index];
-        for (let i2 = 0; i2 < neighbors_size; ++i2) {
-          const tri = adjacency.data[neighbors_offset + i2];
-          if (tri == best_triangle) {
-            adjacency.data[neighbors_offset + i2] = adjacency.data[neighbors_offset + neighbors_size - 1];
-            adjacency.counts[index]--;
-            break;
-          }
-        }
-      }
-      meshlet_cone_acc.px += triangles[best_triangle].px;
-      meshlet_cone_acc.py += triangles[best_triangle].py;
-      meshlet_cone_acc.pz += triangles[best_triangle].pz;
-      meshlet_cone_acc.nx += triangles[best_triangle].nx;
-      meshlet_cone_acc.ny += triangles[best_triangle].ny;
-      meshlet_cone_acc.nz += triangles[best_triangle].nz;
-      emitted_flags[best_triangle] = 1;
-    }
-    if (meshlet.triangle_count) {
-      _MeshletBuilder.finishMeshlet(meshlet, meshlet_triangles);
-      meshlets[meshlet_offset++] = meshlet;
-    }
-    assert2(meshlet_offset <= _MeshletBuilder.meshopt_buildMeshletsBound(index_count, max_vertices, max_triangles));
-    return meshlet_offset;
-  }
-  static meshopt_buildMeshletsBound(index_count, max_vertices, max_triangles) {
-    assert2(index_count % 3 == 0);
-    assert2(max_triangles % 4 == 0);
-    const max_vertices_conservative = max_vertices - 2;
-    const meshlet_limit_vertices = (index_count + max_vertices_conservative - 1) / max_vertices_conservative;
-    const meshlet_limit_triangles = (index_count / 3 + max_triangles - 1) / max_triangles;
-    return meshlet_limit_vertices > meshlet_limit_triangles ? Math.floor(meshlet_limit_vertices) : Math.floor(meshlet_limit_triangles);
-  }
-};
-var MeshletBuilder = _MeshletBuilder;
-MeshletBuilder.kMeshletMaxVertices = 255;
-MeshletBuilder.kMeshletMaxTriangles = 512;
-
-// src/utils/WasmHelper.ts
-var WASMPointer = class {
-  constructor(data, type = "in") {
-    this.data = data;
-    this.ptr = null;
-    this.type = type;
-  }
-};
-var _WASMHelper = class {
-  static getTypeForArray(array) {
-    if (array instanceof Int8Array)
-      return this.TYPES.i8;
-    else if (array instanceof Int16Array)
-      return this.TYPES.i16;
-    else if (array instanceof Int32Array)
-      return this.TYPES.i32;
-    else if (array instanceof Uint8Array)
-      return this.TYPES.u8;
-    else if (array instanceof Uint16Array)
-      return this.TYPES.u16;
-    else if (array instanceof Uint32Array)
-      return this.TYPES.u32;
-    else if (array instanceof Float32Array)
-      return this.TYPES.f32;
-    else if (array instanceof Float64Array)
-      return this.TYPES.f64;
-    console.log(array);
-    throw Error("Array has no type");
-  }
-  static transferNumberArrayToHeap(module, array) {
-    const type = this.getTypeForArray(array);
-    const typedArray = type.array.from(array);
-    const heapPointer = module._malloc(
-      typedArray.length * typedArray.BYTES_PER_ELEMENT
-    );
-    module[type.heap].set(typedArray, heapPointer >> 2);
-    return heapPointer;
-  }
-  static getDataFromHeapU8(module, address, type, length) {
-    return module[type.heap].slice(address, address + length);
-  }
-  static getDataFromHeap(module, address, type, length) {
-    return module[type.heap].slice(address >> 2, (address >> 2) + length);
-  }
-  static getArgumentTypes(args) {
-    let argTypes = [];
-    for (let i2 = 0; i2 < args.length; i2++) {
-      const arg = args[i2];
-      if (arg instanceof Uint8Array)
-        argTypes.push("number");
-      else if (arg instanceof Uint16Array)
-        argTypes.push("number");
-      else if (arg instanceof Uint32Array)
-        argTypes.push("number");
-      else if (arg instanceof Int8Array)
-        argTypes.push("number");
-      else if (arg instanceof Int16Array)
-        argTypes.push("number");
-      else if (arg instanceof Int32Array)
-        argTypes.push("number");
-      else if (arg instanceof Float32Array)
-        argTypes.push("number");
-      else if (arg instanceof Float64Array)
-        argTypes.push("number");
-      else if (typeof arg === "string")
-        argTypes.push("string");
-      else
-        argTypes.push("number");
-    }
-    return argTypes;
-  }
-  static transferArguments(module, args) {
-    let method_args = [];
-    for (let i2 = 0; i2 < args.length; i2++) {
-      const arg = args[i2];
-      if (arg instanceof WASMPointer) {
-        arg.ptr = _WASMHelper.transferNumberArrayToHeap(module, arg.data);
-        method_args.push(arg.ptr);
-      } else
-        method_args.push(args[i2]);
-    }
-    return method_args;
-  }
-  static getOutputArguments(module, args) {
-    for (let i2 = 0; i2 < args.length; i2++) {
-      const arg = args[i2];
-      if (!(arg instanceof WASMPointer))
-        continue;
-      if (arg.ptr === null)
-        continue;
-      if (arg.type === "in")
-        continue;
-      const type = _WASMHelper.getTypeForArray(arg.data);
-      if (type === this.TYPES.u8) {
-        arg.data = _WASMHelper.getDataFromHeapU8(module, arg.ptr, type, arg.data.length);
-      } else {
-        arg.data = _WASMHelper.getDataFromHeap(module, arg.ptr, type, arg.data.length);
-      }
-    }
-  }
-  static call(module, method, returnType, ...args) {
-    let method_args = _WASMHelper.transferArguments(module, args);
-    const method_arg_types = _WASMHelper.getArgumentTypes(args);
-    const ret = module.ccall(
-      method,
-      returnType,
-      method_arg_types,
-      method_args
-    );
-    _WASMHelper.getOutputArguments(module, args);
-    return ret;
-  }
-};
-var WASMHelper = _WASMHelper;
-WASMHelper.TYPES = {
-  i8: { array: Int8Array, heap: "HEAP8" },
-  i16: { array: Int16Array, heap: "HEAP16" },
-  i32: { array: Int32Array, heap: "HEAP32" },
-  f32: { array: Float32Array, heap: "HEAPF32" },
-  f64: { array: Float64Array, heap: "HEAPF64" },
-  u8: { array: Uint8Array, heap: "HEAPU8" },
-  u16: { array: Uint16Array, heap: "HEAPU16" },
-  u32: { array: Uint32Array, heap: "HEAPU32" }
-};
-
-// src/utils/meshoptimizer.js
-var Module = (() => {
-  var _scriptDir = import.meta.url;
-  return function(Module3) {
-    Module3 = Module3 || {};
-    var Module3 = typeof Module3 != "undefined" ? Module3 : {};
-    var readyPromiseResolve, readyPromiseReject;
-    Module3["ready"] = new Promise(function(resolve, reject) {
-      readyPromiseResolve = resolve;
-      readyPromiseReject = reject;
-    });
-    ["_malloc", "_meshopt_buildMeshletsBound", "_meshopt_buildMeshlets", "_meshopt_buildMeshletsScan", "_meshopt_simplify", "_meshopt_generateVertexRemap", "_meshopt_remapIndexBuffer", "_meshopt_remapVertexBuffer", "_fflush", "onRuntimeInitialized"].forEach((prop) => {
-      if (!Object.getOwnPropertyDescriptor(Module3["ready"], prop)) {
-        Object.defineProperty(Module3["ready"], prop, { get: () => abort("You are getting " + prop + " on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js"), set: () => abort("You are setting " + prop + " on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js") });
-      }
-    });
-    var moduleOverrides = Object.assign({}, Module3);
-    var arguments_ = [];
-    var thisProgram = "./this.program";
-    var quit_ = (status, toThrow) => {
-      throw toThrow;
-    };
-    var ENVIRONMENT_IS_WEB = true;
-    var ENVIRONMENT_IS_WORKER2 = false;
-    var ENVIRONMENT_IS_NODE = false;
-    var ENVIRONMENT_IS_SHELL = false;
-    if (Module3["ENVIRONMENT"]) {
-      throw new Error("Module.ENVIRONMENT has been deprecated. To force the environment, use the ENVIRONMENT compile-time option (for example, -sENVIRONMENT=web or -sENVIRONMENT=node)");
-    }
-    var scriptDirectory = "";
-    function locateFile(path) {
-      if (Module3["locateFile"]) {
-        return Module3["locateFile"](path, scriptDirectory);
-      }
-      return scriptDirectory + path;
-    }
-    var read_2, readAsync2, readBinary, setWindowTitle;
-    function logExceptionOnExit(e) {
-      if (e instanceof ExitStatus)
-        return;
-      let toLog = e;
-      if (e && typeof e == "object" && e.stack) {
-        toLog = [e, e.stack];
-      }
-      err("exiting due to exception: " + toLog);
-    }
-    if (ENVIRONMENT_IS_SHELL) {
-      if (typeof process == "object" && typeof __require === "function" || typeof window == "object" || typeof importScripts == "function")
-        throw new Error("not compiled for this environment (did you build to HTML and try to run it not on the web, or set ENVIRONMENT to something - like node - and run it someplace else - like on the web?)");
-      if (typeof read != "undefined") {
-        read_2 = function shell_read(f) {
-          return read(f);
-        };
-      }
-      readBinary = function readBinary2(f) {
-        let data;
-        if (typeof readbuffer == "function") {
-          return new Uint8Array(readbuffer(f));
-        }
-        data = read(f, "binary");
-        assert3(typeof data == "object");
-        return data;
-      };
-      readAsync2 = function readAsync3(f, onload, onerror) {
-        setTimeout(() => onload(readBinary(f)), 0);
-      };
-      if (typeof scriptArgs != "undefined") {
-        arguments_ = scriptArgs;
-      } else if (typeof arguments != "undefined") {
-        arguments_ = arguments;
-      }
-      if (typeof quit == "function") {
-        quit_ = (status, toThrow) => {
-          logExceptionOnExit(toThrow);
-          quit(status);
-        };
-      }
-      if (typeof print != "undefined") {
-        if (typeof console == "undefined")
-          console = {};
-        console.log = print;
-        console.warn = console.error = typeof printErr != "undefined" ? printErr : print;
-      }
-    } else if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER2) {
-      if (ENVIRONMENT_IS_WORKER2) {
-        scriptDirectory = self.location.href;
-      } else if (typeof document != "undefined" && document.currentScript) {
-        scriptDirectory = document.currentScript.src;
-      }
-      if (_scriptDir) {
-        scriptDirectory = _scriptDir;
-      }
-      if (scriptDirectory.indexOf("blob:") !== 0) {
-        scriptDirectory = scriptDirectory.substr(0, scriptDirectory.replace(/[?#].*/, "").lastIndexOf("/") + 1);
-      } else {
-        scriptDirectory = "";
-      }
-      if (!(typeof window == "object" || typeof importScripts == "function"))
-        throw new Error("not compiled for this environment (did you build to HTML and try to run it not on the web, or set ENVIRONMENT to something - like node - and run it someplace else - like on the web?)");
-      {
-        read_2 = (url) => {
-          var xhr = new XMLHttpRequest();
-          xhr.open("GET", url, false);
-          xhr.send(null);
-          return xhr.responseText;
-        };
-        if (ENVIRONMENT_IS_WORKER2) {
-          readBinary = (url) => {
-            var xhr = new XMLHttpRequest();
-            xhr.open("GET", url, false);
-            xhr.responseType = "arraybuffer";
-            xhr.send(null);
-            return new Uint8Array(xhr.response);
-          };
-        }
-        readAsync2 = (url, onload, onerror) => {
-          var xhr = new XMLHttpRequest();
-          xhr.open("GET", url, true);
-          xhr.responseType = "arraybuffer";
-          xhr.onload = () => {
-            if (xhr.status == 200 || xhr.status == 0 && xhr.response) {
-              onload(xhr.response);
-              return;
-            }
-            onerror();
-          };
-          xhr.onerror = onerror;
-          xhr.send(null);
-        };
-      }
-      setWindowTitle = (title) => document.title = title;
-    } else {
-      throw new Error("environment detection error");
-    }
-    var out = Module3["print"] || console.log.bind(console);
-    var err = Module3["printErr"] || console.warn.bind(console);
-    Object.assign(Module3, moduleOverrides);
-    moduleOverrides = null;
-    checkIncomingModuleAPI();
-    if (Module3["arguments"])
-      arguments_ = Module3["arguments"];
-    legacyModuleProp("arguments", "arguments_");
-    if (Module3["thisProgram"])
-      thisProgram = Module3["thisProgram"];
-    legacyModuleProp("thisProgram", "thisProgram");
-    if (Module3["quit"])
-      quit_ = Module3["quit"];
-    legacyModuleProp("quit", "quit_");
-    assert3(typeof Module3["memoryInitializerPrefixURL"] == "undefined", "Module.memoryInitializerPrefixURL option was removed, use Module.locateFile instead");
-    assert3(typeof Module3["pthreadMainPrefixURL"] == "undefined", "Module.pthreadMainPrefixURL option was removed, use Module.locateFile instead");
-    assert3(typeof Module3["cdInitializerPrefixURL"] == "undefined", "Module.cdInitializerPrefixURL option was removed, use Module.locateFile instead");
-    assert3(typeof Module3["filePackagePrefixURL"] == "undefined", "Module.filePackagePrefixURL option was removed, use Module.locateFile instead");
-    assert3(typeof Module3["read"] == "undefined", "Module.read option was removed (modify read_ in JS)");
-    assert3(typeof Module3["readAsync"] == "undefined", "Module.readAsync option was removed (modify readAsync in JS)");
-    assert3(typeof Module3["readBinary"] == "undefined", "Module.readBinary option was removed (modify readBinary in JS)");
-    assert3(typeof Module3["setWindowTitle"] == "undefined", "Module.setWindowTitle option was removed (modify setWindowTitle in JS)");
-    assert3(typeof Module3["TOTAL_MEMORY"] == "undefined", "Module.TOTAL_MEMORY has been renamed Module.INITIAL_MEMORY");
-    legacyModuleProp("read", "read_");
-    legacyModuleProp("readAsync", "readAsync");
-    legacyModuleProp("readBinary", "readBinary");
-    legacyModuleProp("setWindowTitle", "setWindowTitle");
-    assert3(!ENVIRONMENT_IS_WORKER2, "worker environment detected but not enabled at build time.  Add 'worker' to `-sENVIRONMENT` to enable.");
-    assert3(!ENVIRONMENT_IS_NODE, "node environment detected but not enabled at build time.  Add 'node' to `-sENVIRONMENT` to enable.");
-    assert3(!ENVIRONMENT_IS_SHELL, "shell environment detected but not enabled at build time.  Add 'shell' to `-sENVIRONMENT` to enable.");
-    var POINTER_SIZE = 4;
-    function legacyModuleProp(prop, newName) {
-      if (!Object.getOwnPropertyDescriptor(Module3, prop)) {
-        Object.defineProperty(Module3, prop, { configurable: true, get: function() {
-          abort("Module." + prop + " has been replaced with plain " + newName + " (the initial value can be provided on Module, but after startup the value is only looked for on a local variable of that name)");
-        } });
-      }
-    }
-    function ignoredModuleProp(prop) {
-      if (Object.getOwnPropertyDescriptor(Module3, prop)) {
-        abort("`Module." + prop + "` was supplied but `" + prop + "` not included in INCOMING_MODULE_JS_API");
-      }
-    }
-    function isExportedByForceFilesystem(name) {
-      return name === "FS_createPath" || name === "FS_createDataFile" || name === "FS_createPreloadedFile" || name === "FS_unlink" || name === "addRunDependency" || name === "FS_createLazyFile" || name === "FS_createDevice" || name === "removeRunDependency";
-    }
-    function missingLibrarySymbol(sym) {
-      if (typeof globalThis !== "undefined" && !Object.getOwnPropertyDescriptor(globalThis, sym)) {
-        Object.defineProperty(globalThis, sym, { configurable: true, get: function() {
-          var msg = "`" + sym + "` is a library symbol and not included by default; add it to your library.js __deps or to DEFAULT_LIBRARY_FUNCS_TO_INCLUDE on the command line";
-          if (isExportedByForceFilesystem(sym)) {
-            msg += ". Alternatively, forcing filesystem support (-sFORCE_FILESYSTEM) can export this for you";
-          }
-          warnOnce(msg);
-          return void 0;
-        } });
-      }
-    }
-    function unexportedRuntimeSymbol(sym) {
-      if (!Object.getOwnPropertyDescriptor(Module3, sym)) {
-        Object.defineProperty(Module3, sym, { configurable: true, get: function() {
-          var msg = "'" + sym + "' was not exported. add it to EXPORTED_RUNTIME_METHODS (see the FAQ)";
-          if (isExportedByForceFilesystem(sym)) {
-            msg += ". Alternatively, forcing filesystem support (-sFORCE_FILESYSTEM) can export this for you";
-          }
-          abort(msg);
-        } });
-      }
-    }
-    var wasmBinary;
-    if (Module3["wasmBinary"])
-      wasmBinary = Module3["wasmBinary"];
-    legacyModuleProp("wasmBinary", "wasmBinary");
-    var noExitRuntime = Module3["noExitRuntime"] || true;
-    legacyModuleProp("noExitRuntime", "noExitRuntime");
-    if (typeof WebAssembly != "object") {
-      abort("no native wasm support detected");
-    }
-    var wasmMemory;
-    var ABORT = false;
-    var EXITSTATUS;
-    function assert3(condition, text) {
-      if (!condition) {
-        abort("Assertion failed" + (text ? ": " + text : ""));
-      }
-    }
-    var UTF8Decoder = typeof TextDecoder != "undefined" ? new TextDecoder("utf8") : void 0;
-    function UTF8ArrayToString(heapOrArray, idx, maxBytesToRead) {
-      var endIdx = idx + maxBytesToRead;
-      var endPtr = idx;
-      while (heapOrArray[endPtr] && !(endPtr >= endIdx))
-        ++endPtr;
-      if (endPtr - idx > 16 && heapOrArray.buffer && UTF8Decoder) {
-        return UTF8Decoder.decode(heapOrArray.subarray(idx, endPtr));
-      }
-      var str = "";
-      while (idx < endPtr) {
-        var u0 = heapOrArray[idx++];
-        if (!(u0 & 128)) {
-          str += String.fromCharCode(u0);
-          continue;
-        }
-        var u1 = heapOrArray[idx++] & 63;
-        if ((u0 & 224) == 192) {
-          str += String.fromCharCode((u0 & 31) << 6 | u1);
-          continue;
-        }
-        var u2 = heapOrArray[idx++] & 63;
-        if ((u0 & 240) == 224) {
-          u0 = (u0 & 15) << 12 | u1 << 6 | u2;
-        } else {
-          if ((u0 & 248) != 240)
-            warnOnce("Invalid UTF-8 leading byte 0x" + u0.toString(16) + " encountered when deserializing a UTF-8 string in wasm memory to a JS string!");
-          u0 = (u0 & 7) << 18 | u1 << 12 | u2 << 6 | heapOrArray[idx++] & 63;
-        }
-        if (u0 < 65536) {
-          str += String.fromCharCode(u0);
-        } else {
-          var ch = u0 - 65536;
-          str += String.fromCharCode(55296 | ch >> 10, 56320 | ch & 1023);
-        }
-      }
-      return str;
-    }
-    function UTF8ToString(ptr, maxBytesToRead) {
-      return ptr ? UTF8ArrayToString(HEAPU8, ptr, maxBytesToRead) : "";
-    }
-    function stringToUTF8Array(str, heap, outIdx, maxBytesToWrite) {
-      if (!(maxBytesToWrite > 0))
-        return 0;
-      var startIdx = outIdx;
-      var endIdx = outIdx + maxBytesToWrite - 1;
-      for (var i2 = 0; i2 < str.length; ++i2) {
-        var u = str.charCodeAt(i2);
-        if (u >= 55296 && u <= 57343) {
-          var u1 = str.charCodeAt(++i2);
-          u = 65536 + ((u & 1023) << 10) | u1 & 1023;
-        }
-        if (u <= 127) {
-          if (outIdx >= endIdx)
-            break;
-          heap[outIdx++] = u;
-        } else if (u <= 2047) {
-          if (outIdx + 1 >= endIdx)
-            break;
-          heap[outIdx++] = 192 | u >> 6;
-          heap[outIdx++] = 128 | u & 63;
-        } else if (u <= 65535) {
-          if (outIdx + 2 >= endIdx)
-            break;
-          heap[outIdx++] = 224 | u >> 12;
-          heap[outIdx++] = 128 | u >> 6 & 63;
-          heap[outIdx++] = 128 | u & 63;
-        } else {
-          if (outIdx + 3 >= endIdx)
-            break;
-          if (u > 1114111)
-            warnOnce("Invalid Unicode code point 0x" + u.toString(16) + " encountered when serializing a JS string to a UTF-8 string in wasm memory! (Valid unicode code points should be in range 0-0x10FFFF).");
-          heap[outIdx++] = 240 | u >> 18;
-          heap[outIdx++] = 128 | u >> 12 & 63;
-          heap[outIdx++] = 128 | u >> 6 & 63;
-          heap[outIdx++] = 128 | u & 63;
-        }
-      }
-      heap[outIdx] = 0;
-      return outIdx - startIdx;
-    }
-    function stringToUTF8(str, outPtr, maxBytesToWrite) {
-      assert3(typeof maxBytesToWrite == "number", "stringToUTF8(str, outPtr, maxBytesToWrite) is missing the third parameter that specifies the length of the output buffer!");
-      return stringToUTF8Array(str, HEAPU8, outPtr, maxBytesToWrite);
-    }
-    var buffer, HEAP8, HEAPU8, HEAP16, HEAPU16, HEAP32, HEAPU32, HEAPF32, HEAPF64;
-    function updateGlobalBufferAndViews(buf) {
-      buffer = buf;
-      Module3["HEAP8"] = HEAP8 = new Int8Array(buf);
-      Module3["HEAP16"] = HEAP16 = new Int16Array(buf);
-      Module3["HEAP32"] = HEAP32 = new Int32Array(buf);
-      Module3["HEAPU8"] = HEAPU8 = new Uint8Array(buf);
-      Module3["HEAPU16"] = HEAPU16 = new Uint16Array(buf);
-      Module3["HEAPU32"] = HEAPU32 = new Uint32Array(buf);
-      Module3["HEAPF32"] = HEAPF32 = new Float32Array(buf);
-      Module3["HEAPF64"] = HEAPF64 = new Float64Array(buf);
-    }
-    var TOTAL_STACK = 5242880;
-    if (Module3["TOTAL_STACK"])
-      assert3(TOTAL_STACK === Module3["TOTAL_STACK"], "the stack size can no longer be determined at runtime");
-    var INITIAL_MEMORY = Module3["INITIAL_MEMORY"] || 16777216;
-    legacyModuleProp("INITIAL_MEMORY", "INITIAL_MEMORY");
-    assert3(INITIAL_MEMORY >= TOTAL_STACK, "INITIAL_MEMORY should be larger than TOTAL_STACK, was " + INITIAL_MEMORY + "! (TOTAL_STACK=" + TOTAL_STACK + ")");
-    assert3(typeof Int32Array != "undefined" && typeof Float64Array !== "undefined" && Int32Array.prototype.subarray != void 0 && Int32Array.prototype.set != void 0, "JS engine does not provide full typed array support");
-    assert3(!Module3["wasmMemory"], "Use of `wasmMemory` detected.  Use -sIMPORTED_MEMORY to define wasmMemory externally");
-    assert3(INITIAL_MEMORY == 16777216, "Detected runtime INITIAL_MEMORY setting.  Use -sIMPORTED_MEMORY to define wasmMemory dynamically");
-    var wasmTable;
-    function writeStackCookie() {
-      var max = _emscripten_stack_get_end();
-      assert3((max & 3) == 0);
-      HEAPU32[max >> 2] = 34821223;
-      HEAPU32[max + 4 >> 2] = 2310721022;
-      HEAPU32[0] = 1668509029;
-    }
-    function checkStackCookie() {
-      if (ABORT)
-        return;
-      var max = _emscripten_stack_get_end();
-      var cookie1 = HEAPU32[max >> 2];
-      var cookie2 = HEAPU32[max + 4 >> 2];
-      if (cookie1 != 34821223 || cookie2 != 2310721022) {
-        abort("Stack overflow! Stack cookie has been overwritten at 0x" + max.toString(16) + ", expected hex dwords 0x89BACDFE and 0x2135467, but received 0x" + cookie2.toString(16) + " 0x" + cookie1.toString(16));
-      }
-      if (HEAPU32[0] !== 1668509029)
-        abort("Runtime error: The application has corrupted its heap memory area (address zero)!");
-    }
-    (function() {
-      var h16 = new Int16Array(1);
-      var h8 = new Int8Array(h16.buffer);
-      h16[0] = 25459;
-      if (h8[0] !== 115 || h8[1] !== 99)
-        throw "Runtime error: expected the system to be little-endian! (Run with -sSUPPORT_BIG_ENDIAN to bypass)";
-    })();
-    var __ATPRERUN__ = [];
-    var __ATINIT__ = [];
-    var __ATPOSTRUN__ = [];
-    var runtimeInitialized = false;
-    function preRun() {
-      if (Module3["preRun"]) {
-        if (typeof Module3["preRun"] == "function")
-          Module3["preRun"] = [Module3["preRun"]];
-        while (Module3["preRun"].length) {
-          addOnPreRun(Module3["preRun"].shift());
-        }
-      }
-      callRuntimeCallbacks(__ATPRERUN__);
-    }
-    function initRuntime() {
-      assert3(!runtimeInitialized);
-      runtimeInitialized = true;
-      checkStackCookie();
-      callRuntimeCallbacks(__ATINIT__);
-    }
-    function postRun() {
-      checkStackCookie();
-      if (Module3["postRun"]) {
-        if (typeof Module3["postRun"] == "function")
-          Module3["postRun"] = [Module3["postRun"]];
-        while (Module3["postRun"].length) {
-          addOnPostRun(Module3["postRun"].shift());
-        }
-      }
-      callRuntimeCallbacks(__ATPOSTRUN__);
-    }
-    function addOnPreRun(cb) {
-      __ATPRERUN__.unshift(cb);
-    }
-    function addOnInit(cb) {
-      __ATINIT__.unshift(cb);
-    }
-    function addOnPostRun(cb) {
-      __ATPOSTRUN__.unshift(cb);
-    }
-    assert3(Math.imul, "This browser does not support Math.imul(), build with LEGACY_VM_SUPPORT or POLYFILL_OLD_MATH_FUNCTIONS to add in a polyfill");
-    assert3(Math.fround, "This browser does not support Math.fround(), build with LEGACY_VM_SUPPORT or POLYFILL_OLD_MATH_FUNCTIONS to add in a polyfill");
-    assert3(Math.clz32, "This browser does not support Math.clz32(), build with LEGACY_VM_SUPPORT or POLYFILL_OLD_MATH_FUNCTIONS to add in a polyfill");
-    assert3(Math.trunc, "This browser does not support Math.trunc(), build with LEGACY_VM_SUPPORT or POLYFILL_OLD_MATH_FUNCTIONS to add in a polyfill");
-    var runDependencies = 0;
-    var runDependencyWatcher = null;
-    var dependenciesFulfilled = null;
-    var runDependencyTracking = {};
-    function addRunDependency2(id) {
-      runDependencies++;
-      if (Module3["monitorRunDependencies"]) {
-        Module3["monitorRunDependencies"](runDependencies);
-      }
-      if (id) {
-        assert3(!runDependencyTracking[id]);
-        runDependencyTracking[id] = 1;
-        if (runDependencyWatcher === null && typeof setInterval != "undefined") {
-          runDependencyWatcher = setInterval(function() {
-            if (ABORT) {
-              clearInterval(runDependencyWatcher);
-              runDependencyWatcher = null;
-              return;
-            }
-            var shown = false;
-            for (var dep in runDependencyTracking) {
-              if (!shown) {
-                shown = true;
-                err("still waiting on run dependencies:");
-              }
-              err("dependency: " + dep);
-            }
-            if (shown) {
-              err("(end of list)");
-            }
-          }, 1e4);
-        }
-      } else {
-        err("warning: run dependency added without ID");
-      }
-    }
-    function removeRunDependency2(id) {
-      runDependencies--;
-      if (Module3["monitorRunDependencies"]) {
-        Module3["monitorRunDependencies"](runDependencies);
-      }
-      if (id) {
-        assert3(runDependencyTracking[id]);
-        delete runDependencyTracking[id];
-      } else {
-        err("warning: run dependency removed without ID");
-      }
-      if (runDependencies == 0) {
-        if (runDependencyWatcher !== null) {
-          clearInterval(runDependencyWatcher);
-          runDependencyWatcher = null;
-        }
-        if (dependenciesFulfilled) {
-          var callback = dependenciesFulfilled;
-          dependenciesFulfilled = null;
-          callback();
-        }
-      }
-    }
-    function abort(what) {
-      {
-        if (Module3["onAbort"]) {
-          Module3["onAbort"](what);
-        }
-      }
-      what = "Aborted(" + what + ")";
-      err(what);
-      ABORT = true;
-      EXITSTATUS = 1;
-      var e = new WebAssembly.RuntimeError(what);
-      readyPromiseReject(e);
-      throw e;
-    }
-    var FS = { error: function() {
-      abort("Filesystem support (FS) was not included. The problem is that you are using files from JS, but files were not used from C/C++, so filesystem support was not auto-included. You can force-include filesystem support with -sFORCE_FILESYSTEM");
-    }, init: function() {
-      FS.error();
-    }, createDataFile: function() {
-      FS.error();
-    }, createPreloadedFile: function() {
-      FS.error();
-    }, createLazyFile: function() {
-      FS.error();
-    }, open: function() {
-      FS.error();
-    }, mkdev: function() {
-      FS.error();
-    }, registerDevice: function() {
-      FS.error();
-    }, analyzePath: function() {
-      FS.error();
-    }, loadFilesFromDB: function() {
-      FS.error();
-    }, ErrnoError: function ErrnoError() {
-      FS.error();
-    } };
-    Module3["FS_createDataFile"] = FS.createDataFile;
-    Module3["FS_createPreloadedFile"] = FS.createPreloadedFile;
-    var dataURIPrefix = "data:application/octet-stream;base64,";
-    function isDataURI(filename) {
-      return filename.startsWith(dataURIPrefix);
-    }
-    function isFileURI(filename) {
-      return filename.startsWith("file://");
-    }
-    function createExportWrapper(name, fixedasm) {
-      return function() {
-        var displayName = name;
-        var asm2 = fixedasm;
-        if (!fixedasm) {
-          asm2 = Module3["asm"];
-        }
-        assert3(runtimeInitialized, "native function `" + displayName + "` called before runtime initialization");
-        if (!asm2[name]) {
-          assert3(asm2[name], "exported native function `" + displayName + "` not found");
-        }
-        return asm2[name].apply(null, arguments);
-      };
-    }
-    var wasmBinaryFile;
-    if (Module3["locateFile"]) {
-      wasmBinaryFile = "meshoptimizer.wasm";
-      if (!isDataURI(wasmBinaryFile)) {
-        wasmBinaryFile = locateFile(wasmBinaryFile);
-      }
-    } else {
-      wasmBinaryFile = new URL("meshoptimizer.wasm", import.meta.url).toString();
-    }
-    function getBinary(file) {
-      try {
-        if (file == wasmBinaryFile && wasmBinary) {
-          return new Uint8Array(wasmBinary);
-        }
-        if (readBinary) {
-          return readBinary(file);
-        }
-        throw "both async and sync fetching of the wasm failed";
-      } catch (err2) {
-        abort(err2);
-      }
-    }
-    function getBinaryPromise() {
-      if (!wasmBinary && (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER2)) {
-        if (typeof fetch == "function") {
-          return fetch(wasmBinaryFile, { credentials: "same-origin" }).then(function(response) {
-            if (!response["ok"]) {
-              throw "failed to load wasm binary file at '" + wasmBinaryFile + "'";
-            }
-            return response["arrayBuffer"]();
-          }).catch(function() {
-            return getBinary(wasmBinaryFile);
-          });
-        }
-      }
-      return Promise.resolve().then(function() {
-        return getBinary(wasmBinaryFile);
-      });
-    }
-    function createWasm() {
-      var info = { "env": asmLibraryArg, "wasi_snapshot_preview1": asmLibraryArg };
-      function receiveInstance(instance, module) {
-        var exports2 = instance.exports;
-        Module3["asm"] = exports2;
-        wasmMemory = Module3["asm"]["memory"];
-        assert3(wasmMemory, "memory not found in wasm exports");
-        updateGlobalBufferAndViews(wasmMemory.buffer);
-        wasmTable = Module3["asm"]["__indirect_function_table"];
-        assert3(wasmTable, "table not found in wasm exports");
-        addOnInit(Module3["asm"]["__wasm_call_ctors"]);
-        removeRunDependency2("wasm-instantiate");
-      }
-      addRunDependency2("wasm-instantiate");
-      var trueModule = Module3;
-      function receiveInstantiationResult(result) {
-        assert3(Module3 === trueModule, "the Module object should not be replaced during async compilation - perhaps the order of HTML elements is wrong?");
-        trueModule = null;
-        receiveInstance(result["instance"]);
-      }
-      function instantiateArrayBuffer(receiver) {
-        return getBinaryPromise().then(function(binary) {
-          return WebAssembly.instantiate(binary, info);
-        }).then(function(instance) {
-          return instance;
-        }).then(receiver, function(reason) {
-          err("failed to asynchronously prepare wasm: " + reason);
-          if (isFileURI(wasmBinaryFile)) {
-            err("warning: Loading from a file URI (" + wasmBinaryFile + ") is not supported in most browsers. See https://emscripten.org/docs/getting_started/FAQ.html#how-do-i-run-a-local-webserver-for-testing-why-does-my-program-stall-in-downloading-or-preparing");
-          }
-          abort(reason);
-        });
-      }
-      function instantiateAsync() {
-        if (!wasmBinary && typeof WebAssembly.instantiateStreaming == "function" && !isDataURI(wasmBinaryFile) && typeof fetch == "function") {
-          return fetch(wasmBinaryFile, { credentials: "same-origin" }).then(function(response) {
-            var result = WebAssembly.instantiateStreaming(response, info);
-            return result.then(receiveInstantiationResult, function(reason) {
-              err("wasm streaming compile failed: " + reason);
-              err("falling back to ArrayBuffer instantiation");
-              return instantiateArrayBuffer(receiveInstantiationResult);
-            });
-          });
-        } else {
-          return instantiateArrayBuffer(receiveInstantiationResult);
-        }
-      }
-      if (Module3["instantiateWasm"]) {
-        try {
-          var exports = Module3["instantiateWasm"](info, receiveInstance);
-          return exports;
-        } catch (e) {
-          err("Module.instantiateWasm callback failed with error: " + e);
-          readyPromiseReject(e);
-        }
-      }
-      instantiateAsync().catch(readyPromiseReject);
-      return {};
-    }
-    var tempDouble;
-    var tempI64;
-    function ExitStatus(status) {
-      this.name = "ExitStatus";
-      this.message = "Program terminated with exit(" + status + ")";
-      this.status = status;
-    }
-    function callRuntimeCallbacks(callbacks) {
-      while (callbacks.length > 0) {
-        callbacks.shift()(Module3);
-      }
-    }
-    function demangle(func) {
-      warnOnce("warning: build with -sDEMANGLE_SUPPORT to link in libcxxabi demangling");
-      return func;
-    }
-    function demangleAll(text) {
-      var regex = /\b_Z[\w\d_]+/g;
-      return text.replace(regex, function(x) {
-        var y = demangle(x);
-        return x === y ? x : y + " [" + x + "]";
-      });
-    }
-    function jsStackTrace() {
-      var error = new Error();
-      if (!error.stack) {
-        try {
-          throw new Error();
-        } catch (e) {
-          error = e;
-        }
-        if (!error.stack) {
-          return "(no stack trace available)";
-        }
-      }
-      return error.stack.toString();
-    }
-    function warnOnce(text) {
-      if (!warnOnce.shown)
-        warnOnce.shown = {};
-      if (!warnOnce.shown[text]) {
-        warnOnce.shown[text] = 1;
-        err(text);
-      }
-    }
-    function writeArrayToMemory(array, buffer2) {
-      assert3(array.length >= 0, "writeArrayToMemory array must have a length (should be an array or typed array)");
-      HEAP8.set(array, buffer2);
-    }
-    function ___assert_fail(condition, filename, line, func) {
-      abort("Assertion failed: " + UTF8ToString(condition) + ", at: " + [filename ? UTF8ToString(filename) : "unknown filename", line, func ? UTF8ToString(func) : "unknown function"]);
-    }
-    function _abort() {
-      abort("native code called abort()");
-    }
-    function _emscripten_memcpy_big(dest, src, num) {
-      HEAPU8.copyWithin(dest, src, src + num);
-    }
-    function getHeapMax() {
-      return 2147483648;
-    }
-    function emscripten_realloc_buffer(size) {
-      try {
-        wasmMemory.grow(size - buffer.byteLength + 65535 >>> 16);
-        updateGlobalBufferAndViews(wasmMemory.buffer);
-        return 1;
-      } catch (e) {
-        err("emscripten_realloc_buffer: Attempted to grow heap from " + buffer.byteLength + " bytes to " + size + " bytes, but got error: " + e);
-      }
-    }
-    function _emscripten_resize_heap(requestedSize) {
-      var oldSize = HEAPU8.length;
-      requestedSize = requestedSize >>> 0;
-      assert3(requestedSize > oldSize);
-      var maxHeapSize = getHeapMax();
-      if (requestedSize > maxHeapSize) {
-        err("Cannot enlarge memory, asked to go up to " + requestedSize + " bytes, but the limit is " + maxHeapSize + " bytes!");
-        return false;
-      }
-      let alignUp = (x, multiple) => x + (multiple - x % multiple) % multiple;
-      for (var cutDown = 1; cutDown <= 4; cutDown *= 2) {
-        var overGrownHeapSize = oldSize * (1 + 0.2 / cutDown);
-        overGrownHeapSize = Math.min(overGrownHeapSize, requestedSize + 100663296);
-        var newSize = Math.min(maxHeapSize, alignUp(Math.max(requestedSize, overGrownHeapSize), 65536));
-        var replacement = emscripten_realloc_buffer(newSize);
-        if (replacement) {
-          return true;
-        }
-      }
-      err("Failed to grow the heap from " + oldSize + " bytes to " + newSize + " bytes, not enough memory!");
-      return false;
-    }
-    function getCFunc(ident) {
-      var func = Module3["_" + ident];
-      assert3(func, "Cannot call unknown function " + ident + ", make sure it is exported");
-      return func;
-    }
-    function ccall(ident, returnType, argTypes, args, opts) {
-      var toC = { "string": (str) => {
-        var ret2 = 0;
-        if (str !== null && str !== void 0 && str !== 0) {
-          var len = (str.length << 2) + 1;
-          ret2 = stackAlloc(len);
-          stringToUTF8(str, ret2, len);
-        }
-        return ret2;
-      }, "array": (arr) => {
-        var ret2 = stackAlloc(arr.length);
-        writeArrayToMemory(arr, ret2);
-        return ret2;
-      } };
-      function convertReturnValue(ret2) {
-        if (returnType === "string") {
-          return UTF8ToString(ret2);
-        }
-        if (returnType === "boolean")
-          return Boolean(ret2);
-        return ret2;
-      }
-      var func = getCFunc(ident);
-      var cArgs = [];
-      var stack = 0;
-      assert3(returnType !== "array", 'Return type should not be "array".');
-      if (args) {
-        for (var i2 = 0; i2 < args.length; i2++) {
-          var converter = toC[argTypes[i2]];
-          if (converter) {
-            if (stack === 0)
-              stack = stackSave();
-            cArgs[i2] = converter(args[i2]);
-          } else {
-            cArgs[i2] = args[i2];
-          }
-        }
-      }
-      var ret = func.apply(null, cArgs);
-      function onDone(ret2) {
-        if (stack !== 0)
-          stackRestore(stack);
-        return convertReturnValue(ret2);
-      }
-      ret = onDone(ret);
-      return ret;
-    }
-    function cwrap(ident, returnType, argTypes, opts) {
-      return function() {
-        return ccall(ident, returnType, argTypes, arguments, opts);
-      };
-    }
-    function checkIncomingModuleAPI() {
-      ignoredModuleProp("fetchSettings");
-    }
-    var asmLibraryArg = { "__assert_fail": ___assert_fail, "abort": _abort, "emscripten_memcpy_big": _emscripten_memcpy_big, "emscripten_resize_heap": _emscripten_resize_heap };
-    var asm = createWasm();
-    var ___wasm_call_ctors = Module3["___wasm_call_ctors"] = createExportWrapper("__wasm_call_ctors");
-    var _meshopt_buildMeshletsBound = Module3["_meshopt_buildMeshletsBound"] = createExportWrapper("meshopt_buildMeshletsBound");
-    var _meshopt_buildMeshlets = Module3["_meshopt_buildMeshlets"] = createExportWrapper("meshopt_buildMeshlets");
-    var _meshopt_buildMeshletsScan = Module3["_meshopt_buildMeshletsScan"] = createExportWrapper("meshopt_buildMeshletsScan");
-    var _meshopt_simplify = Module3["_meshopt_simplify"] = createExportWrapper("meshopt_simplify");
-    var _meshopt_generateVertexRemap = Module3["_meshopt_generateVertexRemap"] = createExportWrapper("meshopt_generateVertexRemap");
-    var _meshopt_remapVertexBuffer = Module3["_meshopt_remapVertexBuffer"] = createExportWrapper("meshopt_remapVertexBuffer");
-    var _meshopt_remapIndexBuffer = Module3["_meshopt_remapIndexBuffer"] = createExportWrapper("meshopt_remapIndexBuffer");
-    var ___errno_location = Module3["___errno_location"] = createExportWrapper("__errno_location");
-    var _fflush = Module3["_fflush"] = createExportWrapper("fflush");
-    var _malloc = Module3["_malloc"] = createExportWrapper("malloc");
-    var _emscripten_stack_init = Module3["_emscripten_stack_init"] = function() {
-      return (_emscripten_stack_init = Module3["_emscripten_stack_init"] = Module3["asm"]["emscripten_stack_init"]).apply(null, arguments);
-    };
-    var _emscripten_stack_get_free = Module3["_emscripten_stack_get_free"] = function() {
-      return (_emscripten_stack_get_free = Module3["_emscripten_stack_get_free"] = Module3["asm"]["emscripten_stack_get_free"]).apply(null, arguments);
-    };
-    var _emscripten_stack_get_base = Module3["_emscripten_stack_get_base"] = function() {
-      return (_emscripten_stack_get_base = Module3["_emscripten_stack_get_base"] = Module3["asm"]["emscripten_stack_get_base"]).apply(null, arguments);
-    };
-    var _emscripten_stack_get_end = Module3["_emscripten_stack_get_end"] = function() {
-      return (_emscripten_stack_get_end = Module3["_emscripten_stack_get_end"] = Module3["asm"]["emscripten_stack_get_end"]).apply(null, arguments);
-    };
-    var stackSave = Module3["stackSave"] = createExportWrapper("stackSave");
-    var stackRestore = Module3["stackRestore"] = createExportWrapper("stackRestore");
-    var stackAlloc = Module3["stackAlloc"] = createExportWrapper("stackAlloc");
-    Module3["ccall"] = ccall;
-    Module3["cwrap"] = cwrap;
-    var unexportedRuntimeSymbols = ["run", "UTF8ArrayToString", "UTF8ToString", "stringToUTF8Array", "stringToUTF8", "lengthBytesUTF8", "addOnPreRun", "addOnInit", "addOnPreMain", "addOnExit", "addOnPostRun", "addRunDependency", "removeRunDependency", "FS_createFolder", "FS_createPath", "FS_createDataFile", "FS_createPreloadedFile", "FS_createLazyFile", "FS_createLink", "FS_createDevice", "FS_unlink", "getLEB", "getFunctionTables", "alignFunctionTables", "registerFunctions", "prettyPrint", "getCompilerSetting", "print", "printErr", "callMain", "abort", "keepRuntimeAlive", "wasmMemory", "stackAlloc", "stackSave", "stackRestore", "getTempRet0", "setTempRet0", "writeStackCookie", "checkStackCookie", "ptrToString", "zeroMemory", "stringToNewUTF8", "exitJS", "getHeapMax", "emscripten_realloc_buffer", "ENV", "ERRNO_CODES", "ERRNO_MESSAGES", "setErrNo", "inetPton4", "inetNtop4", "inetPton6", "inetNtop6", "readSockaddr", "writeSockaddr", "DNS", "getHostByName", "Protocols", "Sockets", "getRandomDevice", "warnOnce", "traverseStack", "UNWIND_CACHE", "convertPCtoSourceLocation", "readAsmConstArgsArray", "readAsmConstArgs", "mainThreadEM_ASM", "jstoi_q", "jstoi_s", "getExecutableName", "listenOnce", "autoResumeAudioContext", "dynCallLegacy", "getDynCaller", "dynCall", "handleException", "runtimeKeepalivePush", "runtimeKeepalivePop", "callUserCallback", "maybeExit", "safeSetTimeout", "asmjsMangle", "asyncLoad", "alignMemory", "mmapAlloc", "writeI53ToI64", "writeI53ToI64Clamped", "writeI53ToI64Signaling", "writeI53ToU64Clamped", "writeI53ToU64Signaling", "readI53FromI64", "readI53FromU64", "convertI32PairToI53", "convertI32PairToI53Checked", "convertU32PairToI53", "getCFunc", "uleb128Encode", "sigToWasmTypes", "generateFuncType", "convertJsFunctionToWasm", "freeTableIndexes", "functionsInTableMap", "getEmptyTableSlot", "updateTableMap", "addFunction", "removeFunction", "reallyNegative", "unSign", "strLen", "reSign", "formatString", "setValue", "getValue", "PATH", "PATH_FS", "intArrayFromString", "intArrayToString", "AsciiToString", "stringToAscii", "UTF16Decoder", "UTF16ToString", "stringToUTF16", "lengthBytesUTF16", "UTF32ToString", "stringToUTF32", "lengthBytesUTF32", "allocateUTF8", "allocateUTF8OnStack", "writeStringToMemory", "writeArrayToMemory", "writeAsciiToMemory", "SYSCALLS", "getSocketFromFD", "getSocketAddress", "JSEvents", "registerKeyEventCallback", "specialHTMLTargets", "maybeCStringToJsString", "findEventTarget", "findCanvasEventTarget", "getBoundingClientRect", "fillMouseEventData", "registerMouseEventCallback", "registerWheelEventCallback", "registerUiEventCallback", "registerFocusEventCallback", "fillDeviceOrientationEventData", "registerDeviceOrientationEventCallback", "fillDeviceMotionEventData", "registerDeviceMotionEventCallback", "screenOrientation", "fillOrientationChangeEventData", "registerOrientationChangeEventCallback", "fillFullscreenChangeEventData", "registerFullscreenChangeEventCallback", "JSEvents_requestFullscreen", "JSEvents_resizeCanvasForFullscreen", "registerRestoreOldStyle", "hideEverythingExceptGivenElement", "restoreHiddenElements", "setLetterbox", "currentFullscreenStrategy", "restoreOldWindowedStyle", "softFullscreenResizeWebGLRenderTarget", "doRequestFullscreen", "fillPointerlockChangeEventData", "registerPointerlockChangeEventCallback", "registerPointerlockErrorEventCallback", "requestPointerLock", "fillVisibilityChangeEventData", "registerVisibilityChangeEventCallback", "registerTouchEventCallback", "fillGamepadEventData", "registerGamepadEventCallback", "registerBeforeUnloadEventCallback", "fillBatteryEventData", "battery", "registerBatteryEventCallback", "setCanvasElementSize", "getCanvasElementSize", "demangle", "demangleAll", "jsStackTrace", "stackTrace", "ExitStatus", "getEnvStrings", "checkWasiClock", "flush_NO_FILESYSTEM", "dlopenMissingError", "createDyncallWrapper", "setImmediateWrapped", "clearImmediateWrapped", "polyfillSetImmediate", "uncaughtExceptionCount", "exceptionLast", "exceptionCaught", "ExceptionInfo", "exception_addRef", "exception_decRef", "Browser", "setMainLoop", "wget", "FS", "MEMFS", "TTY", "PIPEFS", "SOCKFS", "_setNetworkCallback", "tempFixedLengthArray", "miniTempWebGLFloatBuffers", "heapObjectForWebGLType", "heapAccessShiftForWebGLHeap", "GL", "emscriptenWebGLGet", "computeUnpackAlignedImageSize", "emscriptenWebGLGetTexPixelData", "emscriptenWebGLGetUniform", "webglGetUniformLocation", "webglPrepareUniformLocationsBeforeFirstUse", "webglGetLeftBracePos", "emscriptenWebGLGetVertexAttrib", "writeGLArray", "AL", "SDL_unicode", "SDL_ttfContext", "SDL_audio", "SDL", "SDL_gfx", "GLUT", "EGL", "GLFW_Window", "GLFW", "GLEW", "IDBStore", "runAndAbortIfError", "ALLOC_NORMAL", "ALLOC_STACK", "allocate"];
-    unexportedRuntimeSymbols.forEach(unexportedRuntimeSymbol);
-    var missingLibrarySymbols = ["ptrToString", "zeroMemory", "stringToNewUTF8", "exitJS", "setErrNo", "inetPton4", "inetNtop4", "inetPton6", "inetNtop6", "readSockaddr", "writeSockaddr", "getHostByName", "getRandomDevice", "traverseStack", "convertPCtoSourceLocation", "readAsmConstArgs", "mainThreadEM_ASM", "jstoi_q", "jstoi_s", "getExecutableName", "listenOnce", "autoResumeAudioContext", "dynCallLegacy", "getDynCaller", "dynCall", "runtimeKeepalivePush", "runtimeKeepalivePop", "callUserCallback", "maybeExit", "safeSetTimeout", "asmjsMangle", "asyncLoad", "alignMemory", "mmapAlloc", "writeI53ToI64", "writeI53ToI64Clamped", "writeI53ToI64Signaling", "writeI53ToU64Clamped", "writeI53ToU64Signaling", "readI53FromI64", "readI53FromU64", "convertI32PairToI53", "convertI32PairToI53Checked", "convertU32PairToI53", "uleb128Encode", "sigToWasmTypes", "generateFuncType", "convertJsFunctionToWasm", "getEmptyTableSlot", "updateTableMap", "addFunction", "removeFunction", "reallyNegative", "unSign", "strLen", "reSign", "formatString", "intArrayFromString", "intArrayToString", "AsciiToString", "stringToAscii", "UTF16ToString", "stringToUTF16", "lengthBytesUTF16", "UTF32ToString", "stringToUTF32", "lengthBytesUTF32", "allocateUTF8", "allocateUTF8OnStack", "writeStringToMemory", "writeAsciiToMemory", "getSocketFromFD", "getSocketAddress", "registerKeyEventCallback", "maybeCStringToJsString", "findEventTarget", "findCanvasEventTarget", "getBoundingClientRect", "fillMouseEventData", "registerMouseEventCallback", "registerWheelEventCallback", "registerUiEventCallback", "registerFocusEventCallback", "fillDeviceOrientationEventData", "registerDeviceOrientationEventCallback", "fillDeviceMotionEventData", "registerDeviceMotionEventCallback", "screenOrientation", "fillOrientationChangeEventData", "registerOrientationChangeEventCallback", "fillFullscreenChangeEventData", "registerFullscreenChangeEventCallback", "JSEvents_requestFullscreen", "JSEvents_resizeCanvasForFullscreen", "registerRestoreOldStyle", "hideEverythingExceptGivenElement", "restoreHiddenElements", "setLetterbox", "softFullscreenResizeWebGLRenderTarget", "doRequestFullscreen", "fillPointerlockChangeEventData", "registerPointerlockChangeEventCallback", "registerPointerlockErrorEventCallback", "requestPointerLock", "fillVisibilityChangeEventData", "registerVisibilityChangeEventCallback", "registerTouchEventCallback", "fillGamepadEventData", "registerGamepadEventCallback", "registerBeforeUnloadEventCallback", "fillBatteryEventData", "battery", "registerBatteryEventCallback", "setCanvasElementSize", "getCanvasElementSize", "getEnvStrings", "checkWasiClock", "flush_NO_FILESYSTEM", "createDyncallWrapper", "setImmediateWrapped", "clearImmediateWrapped", "polyfillSetImmediate", "ExceptionInfo", "exception_addRef", "exception_decRef", "setMainLoop", "_setNetworkCallback", "heapObjectForWebGLType", "heapAccessShiftForWebGLHeap", "emscriptenWebGLGet", "computeUnpackAlignedImageSize", "emscriptenWebGLGetTexPixelData", "emscriptenWebGLGetUniform", "webglGetUniformLocation", "webglPrepareUniformLocationsBeforeFirstUse", "webglGetLeftBracePos", "emscriptenWebGLGetVertexAttrib", "writeGLArray", "SDL_unicode", "SDL_ttfContext", "SDL_audio", "GLFW_Window", "runAndAbortIfError", "ALLOC_NORMAL", "ALLOC_STACK", "allocate"];
-    missingLibrarySymbols.forEach(missingLibrarySymbol);
-    var calledRun;
-    dependenciesFulfilled = function runCaller() {
-      if (!calledRun)
-        run();
-      if (!calledRun)
-        dependenciesFulfilled = runCaller;
-    };
-    function stackCheckInit() {
-      _emscripten_stack_init();
-      writeStackCookie();
-    }
-    function run(args) {
-      args = args || arguments_;
-      if (runDependencies > 0) {
-        return;
-      }
-      stackCheckInit();
-      preRun();
-      if (runDependencies > 0) {
-        return;
-      }
-      function doRun() {
-        if (calledRun)
-          return;
-        calledRun = true;
-        Module3["calledRun"] = true;
-        if (ABORT)
-          return;
-        initRuntime();
-        readyPromiseResolve(Module3);
-        if (Module3["onRuntimeInitialized"])
-          Module3["onRuntimeInitialized"]();
-        assert3(!Module3["_main"], 'compiled without a main, but one is present. if you added it from JS, use Module["onRuntimeInitialized"]');
-        postRun();
-      }
-      if (Module3["setStatus"]) {
-        Module3["setStatus"]("Running...");
-        setTimeout(function() {
-          setTimeout(function() {
-            Module3["setStatus"]("");
-          }, 1);
-          doRun();
-        }, 1);
-      } else {
-        doRun();
-      }
-      checkStackCookie();
-    }
-    if (Module3["preInit"]) {
-      if (typeof Module3["preInit"] == "function")
-        Module3["preInit"] = [Module3["preInit"]];
-      while (Module3["preInit"].length > 0) {
-        Module3["preInit"].pop()();
-      }
-    }
-    run();
-    return Module3.ready;
-  };
-})();
-var meshoptimizer_default = Module;
-
-// src/utils/MeshletBuilder_wasm.ts
-var MeshletBuilder_wasm = class {
-  static async load() {
-    if (!MeshletBuilder_wasm.meshoptimizer_clusterize) {
-      MeshletBuilder_wasm.meshoptimizer_clusterize = await meshoptimizer_default();
-    }
-  }
-  static async build(vertices, indices, max_vertices, max_triangles, cone_weight) {
-    await MeshletBuilder_wasm.load();
-    const MeshOptmizer = MeshletBuilder_wasm.meshoptimizer_clusterize;
-    function rebuildMeshlets(data) {
-      let meshlets2 = [];
-      for (let i2 = 0; i2 < data.length; i2 += 4) {
-        meshlets2.push({
-          vertex_offset: data[i2 + 0],
-          triangle_offset: data[i2 + 1],
-          vertex_count: data[i2 + 2],
-          triangle_count: data[i2 + 3]
-        });
-      }
-      return meshlets2;
-    }
-    const max_meshlets = WASMHelper.call(MeshOptmizer, "meshopt_buildMeshletsBound", "number", indices.length, max_vertices, max_triangles);
-    const meshlets = new WASMPointer(new Uint32Array(max_meshlets * 4), "out");
-    const meshlet_vertices = new WASMPointer(new Uint32Array(max_meshlets * max_vertices), "out");
-    const meshlet_triangles = new WASMPointer(new Uint8Array(max_meshlets * max_triangles * 3), "out");
-    const meshletCount = WASMHelper.call(
-      MeshOptmizer,
-      "meshopt_buildMeshlets",
-      "number",
-      meshlets,
-      meshlet_vertices,
-      meshlet_triangles,
-      new WASMPointer(Uint32Array.from(indices)),
-      indices.length,
-      new WASMPointer(Float32Array.from(vertices)),
-      vertices.length,
-      3 * Float32Array.BYTES_PER_ELEMENT,
-      max_vertices,
-      max_triangles,
-      cone_weight
-    );
-    const meshlets_result = rebuildMeshlets(meshlets.data).splice(0, meshletCount);
-    console.log("meshlets_result", meshlets_result);
-    return {
-      meshlet_count: meshletCount,
-      meshlets_result,
-      meshlet_vertices_result: meshlet_vertices.data,
-      meshlet_triangles_result: meshlet_triangles.data
-    };
-  }
-};
-
-// src/MeshletCreator.ts
-var _MeshletCreator = class {
-  static async buildFromWasm(vertices, indices, max_triangles) {
-    const max_vertices = _MeshletCreator.max_vertices;
-    const cone_weight = _MeshletCreator.cone_weight;
-    console.log("triangle count", indices.length / 3);
-    console.log("max_triangles", max_triangles);
-    const output = await MeshletBuilder_wasm.build(vertices, indices, max_vertices, max_triangles, cone_weight);
-    return {
-      meshlets_count: output.meshlet_count,
-      meshlets_result: output.meshlets_result.slice(0, output.meshlet_count),
-      meshlet_vertices_result: output.meshlet_vertices_result,
-      meshlet_triangles_result: output.meshlet_triangles_result
-    };
-  }
-  static async buildFromJS(vertices, indices, max_triangles) {
-    const max_vertices = _MeshletCreator.max_vertices;
-    const cone_weight = _MeshletCreator.cone_weight;
-    const max_meshlets = MeshletBuilder.meshopt_buildMeshletsBound(indices.length, max_vertices, max_triangles);
-    const meshlets = new Array(max_meshlets).fill(0).map((v) => {
-      return {
-        vertex_offset: 0,
-        triangle_offset: 0,
-        vertex_count: 0,
-        triangle_count: 0
-      };
-    });
-    const meshlet_vertices = new Uint32Array(max_meshlets * max_vertices);
-    const meshlet_triangles = new Uint8Array(max_meshlets * max_triangles * 3);
-    const meshletCount = MeshletBuilder.meshopt_buildMeshlets(
-      meshlets,
-      meshlet_vertices,
-      meshlet_triangles,
-      Uint32Array.from(indices),
-      indices.length,
-      vertices,
-      vertices.length,
-      12,
-      max_vertices,
-      max_triangles,
-      cone_weight
-    );
-    return {
-      meshlets_count: meshletCount,
-      meshlets_result: meshlets.slice(0, meshletCount),
-      meshlet_vertices_result: meshlet_vertices,
-      meshlet_triangles_result: meshlet_triangles
-    };
-  }
-  static buildMeshletsFromBuildOutput(vertices, output) {
-    let meshlets = [];
-    for (let i2 = 0; i2 < output.meshlets_count; i2++) {
-      const meshlet = output.meshlets_result[i2];
-      let meshlet_positions = [];
-      let meshlet_indices = [];
-      for (let v = 0; v < meshlet.vertex_count; ++v) {
-        const o2 = 3 * output.meshlet_vertices_result[meshlet.vertex_offset + v];
-        const x = vertices[o2];
-        const y = vertices[o2 + 1];
-        const z = vertices[o2 + 2];
-        meshlet_positions.push(x);
-        meshlet_positions.push(y);
-        meshlet_positions.push(z);
-      }
-      for (let t = 0; t < meshlet.triangle_count; ++t) {
-        const o2 = meshlet.triangle_offset + 3 * t;
-        meshlet_indices.push(output.meshlet_triangles_result[o2 + 0]);
-        meshlet_indices.push(output.meshlet_triangles_result[o2 + 1]);
-        meshlet_indices.push(output.meshlet_triangles_result[o2 + 2]);
-      }
-      meshlets.push({
-        vertices: meshlet_positions,
-        indices: meshlet_indices,
-        vertex_count: meshlet_positions.length / 3,
-        index_count: meshlet_indices.length
-      });
-    }
-    return meshlets;
-  }
-  static async build(vertices, indices, max_triangles, useWasm = true) {
-    const buildOutput = useWasm ? await _MeshletCreator.buildFromWasm(vertices, indices, max_triangles) : await _MeshletCreator.buildFromJS(vertices, indices, max_triangles);
-    const meshlets = _MeshletCreator.buildMeshletsFromBuildOutput(vertices, buildOutput);
-    return meshlets;
-  }
-};
-var MeshletCreator = _MeshletCreator;
-MeshletCreator.max_vertices = 255;
-MeshletCreator.max_triangles = 128;
-MeshletCreator.cone_weight = 0;
-
 // src/MeshletMerger.ts
 var MeshletMerger = class {
   static merge(meshlets) {
-    const mergedMeshlet = {
-      vertices: [],
-      vertex_count: 0,
-      indices: [],
-      index_count: 0
-    };
+    const vertices = [];
+    const indices = [];
     let indexOffset = 0;
     const mergedIndices = [];
     for (let i2 = 0; i2 < meshlets.length; ++i2) {
-      const indices = meshlets[i2].indices;
-      for (let j = 0; j < indices.length; j++) {
-        mergedIndices.push(indices[j] + indexOffset);
+      const indices2 = meshlets[i2].indices_raw;
+      for (let j = 0; j < indices2.length; j++) {
+        mergedIndices.push(indices2[j] + indexOffset);
       }
-      indexOffset += meshlets[i2].vertex_count;
+      indexOffset += meshlets[i2].vertices.length;
     }
-    mergedMeshlet.indices = mergedIndices;
+    indices.push(...mergedIndices);
     for (let i2 = 0; i2 < meshlets.length; ++i2) {
-      const vertices = meshlets[i2].vertices;
-      mergedMeshlet.vertices.push(...vertices);
+      vertices.push(...meshlets[i2].vertices_raw);
     }
-    mergedMeshlet.index_count = mergedMeshlet.indices.length;
-    mergedMeshlet.vertex_count = mergedMeshlet.vertices.length / 3;
-    console.log("NEED to clean vertices and indices");
-    return mergedMeshlet;
+    const merged = new Meshlet(vertices, indices);
+    return merged;
   }
 };
 
 // src/metis-js/metis-5.1.0/metis.js
-var Module2 = (() => {
+var Module = (() => {
   var _scriptDir = import.meta.url;
   return function(Module3) {
     Module3 = Module3 || {};
@@ -20803,7 +19394,132 @@ var Module2 = (() => {
     return Module3.ready;
   };
 })();
-var metis_default = Module2;
+var metis_default = Module;
+
+// src/utils/WasmHelper.ts
+var WASMPointer = class {
+  constructor(data, type = "in") {
+    this.data = data;
+    this.ptr = null;
+    this.type = type;
+  }
+};
+var _WASMHelper = class {
+  static getTypeForArray(array) {
+    if (array instanceof Int8Array)
+      return this.TYPES.i8;
+    else if (array instanceof Int16Array)
+      return this.TYPES.i16;
+    else if (array instanceof Int32Array)
+      return this.TYPES.i32;
+    else if (array instanceof Uint8Array)
+      return this.TYPES.u8;
+    else if (array instanceof Uint16Array)
+      return this.TYPES.u16;
+    else if (array instanceof Uint32Array)
+      return this.TYPES.u32;
+    else if (array instanceof Float32Array)
+      return this.TYPES.f32;
+    else if (array instanceof Float64Array)
+      return this.TYPES.f64;
+    console.log(array);
+    throw Error("Array has no type");
+  }
+  static transferNumberArrayToHeap(module, array) {
+    const type = this.getTypeForArray(array);
+    const typedArray = type.array.from(array);
+    const heapPointer = module._malloc(
+      typedArray.length * typedArray.BYTES_PER_ELEMENT
+    );
+    module[type.heap].set(typedArray, heapPointer >> 2);
+    return heapPointer;
+  }
+  static getDataFromHeapU8(module, address, type, length) {
+    return module[type.heap].slice(address, address + length);
+  }
+  static getDataFromHeap(module, address, type, length) {
+    return module[type.heap].slice(address >> 2, (address >> 2) + length);
+  }
+  static getArgumentTypes(args) {
+    let argTypes = [];
+    for (let i2 = 0; i2 < args.length; i2++) {
+      const arg = args[i2];
+      if (arg instanceof Uint8Array)
+        argTypes.push("number");
+      else if (arg instanceof Uint16Array)
+        argTypes.push("number");
+      else if (arg instanceof Uint32Array)
+        argTypes.push("number");
+      else if (arg instanceof Int8Array)
+        argTypes.push("number");
+      else if (arg instanceof Int16Array)
+        argTypes.push("number");
+      else if (arg instanceof Int32Array)
+        argTypes.push("number");
+      else if (arg instanceof Float32Array)
+        argTypes.push("number");
+      else if (arg instanceof Float64Array)
+        argTypes.push("number");
+      else if (typeof arg === "string")
+        argTypes.push("string");
+      else
+        argTypes.push("number");
+    }
+    return argTypes;
+  }
+  static transferArguments(module, args) {
+    let method_args = [];
+    for (let i2 = 0; i2 < args.length; i2++) {
+      const arg = args[i2];
+      if (arg instanceof WASMPointer) {
+        arg.ptr = _WASMHelper.transferNumberArrayToHeap(module, arg.data);
+        method_args.push(arg.ptr);
+      } else
+        method_args.push(args[i2]);
+    }
+    return method_args;
+  }
+  static getOutputArguments(module, args) {
+    for (let i2 = 0; i2 < args.length; i2++) {
+      const arg = args[i2];
+      if (!(arg instanceof WASMPointer))
+        continue;
+      if (arg.ptr === null)
+        continue;
+      if (arg.type === "in")
+        continue;
+      const type = _WASMHelper.getTypeForArray(arg.data);
+      if (type === this.TYPES.u8) {
+        arg.data = _WASMHelper.getDataFromHeapU8(module, arg.ptr, type, arg.data.length);
+      } else {
+        arg.data = _WASMHelper.getDataFromHeap(module, arg.ptr, type, arg.data.length);
+      }
+    }
+  }
+  static call(module, method, returnType, ...args) {
+    let method_args = _WASMHelper.transferArguments(module, args);
+    const method_arg_types = _WASMHelper.getArgumentTypes(args);
+    const ret = module.ccall(
+      method,
+      returnType,
+      method_arg_types,
+      method_args
+    );
+    _WASMHelper.getOutputArguments(module, args);
+    return ret;
+  }
+};
+var WASMHelper = _WASMHelper;
+WASMHelper.TYPES = {
+  i8: { array: Int8Array, heap: "HEAP8" },
+  i16: { array: Int16Array, heap: "HEAP16" },
+  i32: { array: Int32Array, heap: "HEAP32" },
+  f32: { array: Float32Array, heap: "HEAPF32" },
+  f64: { array: Float64Array, heap: "HEAPF64" },
+  u8: { array: Uint8Array, heap: "HEAPU8" },
+  u16: { array: Uint16Array, heap: "HEAPU16" },
+  u32: { array: Uint32Array, heap: "HEAPU32" }
+};
 
 // src/METISWrapper.ts
 var METISWrapper = class {
@@ -20815,7 +19531,7 @@ var METISWrapper = class {
   static async partition(groups, nparts) {
     await METISWrapper.load();
     function _prepare_graph(adjacency) {
-      function assert3(condition) {
+      function assert2(condition) {
         if (!condition)
           throw Error("assert");
       }
@@ -20824,7 +19540,7 @@ var METISWrapper = class {
       for (let i2 = 0; i2 < adjacency.length; i2++) {
         let adj = adjacency[i2];
         if (adj !== null && adj.length) {
-          assert3(Math.max(...adj) < adjacency.length);
+          assert2(Math.max(...adj) < adjacency.length);
         }
         adjncy.push(...adj);
         xadj.push(adjncy.length);
@@ -20832,23 +19548,25 @@ var METISWrapper = class {
       return [xadj, adjncy];
     }
     const [_xadj, _adjncy] = _prepare_graph(groups);
-    const objval = new WASMPointer(new Int32Array(1), "out");
-    const parts = new WASMPointer(new Int32Array(_xadj.length - 1), "out");
+    const objval = new WASMPointer(new Uint32Array(1), "out");
+    const parts = new WASMPointer(new Uint32Array(_xadj.length - 1), "out");
+    const options_array = new Int32Array(40);
+    options_array.fill(-1);
     WASMHelper.call(
       METISWrapper.METIS,
       "metis_part_graph_kway",
       "number",
       _xadj.length - 1,
       1,
-      new WASMPointer(new Int32Array(_xadj)),
-      new WASMPointer(new Int32Array(_adjncy)),
+      new WASMPointer(new Uint32Array(_xadj)),
+      new WASMPointer(new Uint32Array(_adjncy)),
       null,
       null,
       null,
       nparts,
       null,
       null,
-      null,
+      new WASMPointer(options_array),
       objval,
       parts
     );
@@ -20861,9 +19579,34 @@ var METISWrapper = class {
           part.push(j);
         }
       }
-      parts_out.push(part);
+      if (part.length > 0)
+        parts_out.push(part);
     }
     return parts_out;
+  }
+  static async partition2(count, xadj, adjncy, nparts) {
+    await METISWrapper.load();
+    const objval = new WASMPointer(new Int32Array(1), "out");
+    const parts = new WASMPointer(new Int32Array(xadj.length - 1), "out");
+    WASMHelper.call(
+      METISWrapper.METIS,
+      "metis_part_graph_kway",
+      "number",
+      count,
+      1,
+      new WASMPointer(new Int32Array(xadj)),
+      new WASMPointer(new Int32Array(adjncy)),
+      null,
+      null,
+      null,
+      nparts,
+      null,
+      null,
+      null,
+      objval,
+      parts
+    );
+    return parts.data;
   }
 };
 
@@ -22600,43 +21343,895 @@ function K() {
   return A({ wasm: M() }).then((A2) => new o(A2));
 }
 
+// src/utils/meshoptimizer.js
+var Module2 = (() => {
+  var _scriptDir = import.meta.url;
+  return function(Module3) {
+    Module3 = Module3 || {};
+    var Module3 = typeof Module3 != "undefined" ? Module3 : {};
+    var readyPromiseResolve, readyPromiseReject;
+    Module3["ready"] = new Promise(function(resolve, reject) {
+      readyPromiseResolve = resolve;
+      readyPromiseReject = reject;
+    });
+    ["_malloc", "_meshopt_buildMeshletsBound", "_meshopt_buildMeshlets", "_meshopt_buildMeshletsScan", "_meshopt_simplify", "_meshopt_generateVertexRemap", "_meshopt_remapIndexBuffer", "_meshopt_remapVertexBuffer", "_fflush", "onRuntimeInitialized"].forEach((prop) => {
+      if (!Object.getOwnPropertyDescriptor(Module3["ready"], prop)) {
+        Object.defineProperty(Module3["ready"], prop, { get: () => abort("You are getting " + prop + " on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js"), set: () => abort("You are setting " + prop + " on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js") });
+      }
+    });
+    var moduleOverrides = Object.assign({}, Module3);
+    var arguments_ = [];
+    var thisProgram = "./this.program";
+    var quit_ = (status, toThrow) => {
+      throw toThrow;
+    };
+    var ENVIRONMENT_IS_WEB = true;
+    var ENVIRONMENT_IS_WORKER2 = false;
+    var ENVIRONMENT_IS_NODE = false;
+    var ENVIRONMENT_IS_SHELL = false;
+    if (Module3["ENVIRONMENT"]) {
+      throw new Error("Module.ENVIRONMENT has been deprecated. To force the environment, use the ENVIRONMENT compile-time option (for example, -sENVIRONMENT=web or -sENVIRONMENT=node)");
+    }
+    var scriptDirectory = "";
+    function locateFile(path) {
+      if (Module3["locateFile"]) {
+        return Module3["locateFile"](path, scriptDirectory);
+      }
+      return scriptDirectory + path;
+    }
+    var read_2, readAsync2, readBinary, setWindowTitle;
+    function logExceptionOnExit(e) {
+      if (e instanceof ExitStatus)
+        return;
+      let toLog = e;
+      if (e && typeof e == "object" && e.stack) {
+        toLog = [e, e.stack];
+      }
+      err("exiting due to exception: " + toLog);
+    }
+    if (ENVIRONMENT_IS_SHELL) {
+      if (typeof process == "object" && typeof __require === "function" || typeof window == "object" || typeof importScripts == "function")
+        throw new Error("not compiled for this environment (did you build to HTML and try to run it not on the web, or set ENVIRONMENT to something - like node - and run it someplace else - like on the web?)");
+      if (typeof read != "undefined") {
+        read_2 = function shell_read(f) {
+          return read(f);
+        };
+      }
+      readBinary = function readBinary2(f) {
+        let data;
+        if (typeof readbuffer == "function") {
+          return new Uint8Array(readbuffer(f));
+        }
+        data = read(f, "binary");
+        assert2(typeof data == "object");
+        return data;
+      };
+      readAsync2 = function readAsync3(f, onload, onerror) {
+        setTimeout(() => onload(readBinary(f)), 0);
+      };
+      if (typeof scriptArgs != "undefined") {
+        arguments_ = scriptArgs;
+      } else if (typeof arguments != "undefined") {
+        arguments_ = arguments;
+      }
+      if (typeof quit == "function") {
+        quit_ = (status, toThrow) => {
+          logExceptionOnExit(toThrow);
+          quit(status);
+        };
+      }
+      if (typeof print != "undefined") {
+        if (typeof console == "undefined")
+          console = {};
+        console.log = print;
+        console.warn = console.error = typeof printErr != "undefined" ? printErr : print;
+      }
+    } else if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER2) {
+      if (ENVIRONMENT_IS_WORKER2) {
+        scriptDirectory = self.location.href;
+      } else if (typeof document != "undefined" && document.currentScript) {
+        scriptDirectory = document.currentScript.src;
+      }
+      if (_scriptDir) {
+        scriptDirectory = _scriptDir;
+      }
+      if (scriptDirectory.indexOf("blob:") !== 0) {
+        scriptDirectory = scriptDirectory.substr(0, scriptDirectory.replace(/[?#].*/, "").lastIndexOf("/") + 1);
+      } else {
+        scriptDirectory = "";
+      }
+      if (!(typeof window == "object" || typeof importScripts == "function"))
+        throw new Error("not compiled for this environment (did you build to HTML and try to run it not on the web, or set ENVIRONMENT to something - like node - and run it someplace else - like on the web?)");
+      {
+        read_2 = (url) => {
+          var xhr = new XMLHttpRequest();
+          xhr.open("GET", url, false);
+          xhr.send(null);
+          return xhr.responseText;
+        };
+        if (ENVIRONMENT_IS_WORKER2) {
+          readBinary = (url) => {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", url, false);
+            xhr.responseType = "arraybuffer";
+            xhr.send(null);
+            return new Uint8Array(xhr.response);
+          };
+        }
+        readAsync2 = (url, onload, onerror) => {
+          var xhr = new XMLHttpRequest();
+          xhr.open("GET", url, true);
+          xhr.responseType = "arraybuffer";
+          xhr.onload = () => {
+            if (xhr.status == 200 || xhr.status == 0 && xhr.response) {
+              onload(xhr.response);
+              return;
+            }
+            onerror();
+          };
+          xhr.onerror = onerror;
+          xhr.send(null);
+        };
+      }
+      setWindowTitle = (title) => document.title = title;
+    } else {
+      throw new Error("environment detection error");
+    }
+    var out = Module3["print"] || console.log.bind(console);
+    var err = Module3["printErr"] || console.warn.bind(console);
+    Object.assign(Module3, moduleOverrides);
+    moduleOverrides = null;
+    checkIncomingModuleAPI();
+    if (Module3["arguments"])
+      arguments_ = Module3["arguments"];
+    legacyModuleProp("arguments", "arguments_");
+    if (Module3["thisProgram"])
+      thisProgram = Module3["thisProgram"];
+    legacyModuleProp("thisProgram", "thisProgram");
+    if (Module3["quit"])
+      quit_ = Module3["quit"];
+    legacyModuleProp("quit", "quit_");
+    assert2(typeof Module3["memoryInitializerPrefixURL"] == "undefined", "Module.memoryInitializerPrefixURL option was removed, use Module.locateFile instead");
+    assert2(typeof Module3["pthreadMainPrefixURL"] == "undefined", "Module.pthreadMainPrefixURL option was removed, use Module.locateFile instead");
+    assert2(typeof Module3["cdInitializerPrefixURL"] == "undefined", "Module.cdInitializerPrefixURL option was removed, use Module.locateFile instead");
+    assert2(typeof Module3["filePackagePrefixURL"] == "undefined", "Module.filePackagePrefixURL option was removed, use Module.locateFile instead");
+    assert2(typeof Module3["read"] == "undefined", "Module.read option was removed (modify read_ in JS)");
+    assert2(typeof Module3["readAsync"] == "undefined", "Module.readAsync option was removed (modify readAsync in JS)");
+    assert2(typeof Module3["readBinary"] == "undefined", "Module.readBinary option was removed (modify readBinary in JS)");
+    assert2(typeof Module3["setWindowTitle"] == "undefined", "Module.setWindowTitle option was removed (modify setWindowTitle in JS)");
+    assert2(typeof Module3["TOTAL_MEMORY"] == "undefined", "Module.TOTAL_MEMORY has been renamed Module.INITIAL_MEMORY");
+    legacyModuleProp("read", "read_");
+    legacyModuleProp("readAsync", "readAsync");
+    legacyModuleProp("readBinary", "readBinary");
+    legacyModuleProp("setWindowTitle", "setWindowTitle");
+    assert2(!ENVIRONMENT_IS_WORKER2, "worker environment detected but not enabled at build time.  Add 'worker' to `-sENVIRONMENT` to enable.");
+    assert2(!ENVIRONMENT_IS_NODE, "node environment detected but not enabled at build time.  Add 'node' to `-sENVIRONMENT` to enable.");
+    assert2(!ENVIRONMENT_IS_SHELL, "shell environment detected but not enabled at build time.  Add 'shell' to `-sENVIRONMENT` to enable.");
+    var POINTER_SIZE = 4;
+    function legacyModuleProp(prop, newName) {
+      if (!Object.getOwnPropertyDescriptor(Module3, prop)) {
+        Object.defineProperty(Module3, prop, { configurable: true, get: function() {
+          abort("Module." + prop + " has been replaced with plain " + newName + " (the initial value can be provided on Module, but after startup the value is only looked for on a local variable of that name)");
+        } });
+      }
+    }
+    function ignoredModuleProp(prop) {
+      if (Object.getOwnPropertyDescriptor(Module3, prop)) {
+        abort("`Module." + prop + "` was supplied but `" + prop + "` not included in INCOMING_MODULE_JS_API");
+      }
+    }
+    function isExportedByForceFilesystem(name) {
+      return name === "FS_createPath" || name === "FS_createDataFile" || name === "FS_createPreloadedFile" || name === "FS_unlink" || name === "addRunDependency" || name === "FS_createLazyFile" || name === "FS_createDevice" || name === "removeRunDependency";
+    }
+    function missingLibrarySymbol(sym) {
+      if (typeof globalThis !== "undefined" && !Object.getOwnPropertyDescriptor(globalThis, sym)) {
+        Object.defineProperty(globalThis, sym, { configurable: true, get: function() {
+          var msg = "`" + sym + "` is a library symbol and not included by default; add it to your library.js __deps or to DEFAULT_LIBRARY_FUNCS_TO_INCLUDE on the command line";
+          if (isExportedByForceFilesystem(sym)) {
+            msg += ". Alternatively, forcing filesystem support (-sFORCE_FILESYSTEM) can export this for you";
+          }
+          warnOnce(msg);
+          return void 0;
+        } });
+      }
+    }
+    function unexportedRuntimeSymbol(sym) {
+      if (!Object.getOwnPropertyDescriptor(Module3, sym)) {
+        Object.defineProperty(Module3, sym, { configurable: true, get: function() {
+          var msg = "'" + sym + "' was not exported. add it to EXPORTED_RUNTIME_METHODS (see the FAQ)";
+          if (isExportedByForceFilesystem(sym)) {
+            msg += ". Alternatively, forcing filesystem support (-sFORCE_FILESYSTEM) can export this for you";
+          }
+          abort(msg);
+        } });
+      }
+    }
+    var wasmBinary;
+    if (Module3["wasmBinary"])
+      wasmBinary = Module3["wasmBinary"];
+    legacyModuleProp("wasmBinary", "wasmBinary");
+    var noExitRuntime = Module3["noExitRuntime"] || true;
+    legacyModuleProp("noExitRuntime", "noExitRuntime");
+    if (typeof WebAssembly != "object") {
+      abort("no native wasm support detected");
+    }
+    var wasmMemory;
+    var ABORT = false;
+    var EXITSTATUS;
+    function assert2(condition, text) {
+      if (!condition) {
+        abort("Assertion failed" + (text ? ": " + text : ""));
+      }
+    }
+    var UTF8Decoder = typeof TextDecoder != "undefined" ? new TextDecoder("utf8") : void 0;
+    function UTF8ArrayToString(heapOrArray, idx, maxBytesToRead) {
+      var endIdx = idx + maxBytesToRead;
+      var endPtr = idx;
+      while (heapOrArray[endPtr] && !(endPtr >= endIdx))
+        ++endPtr;
+      if (endPtr - idx > 16 && heapOrArray.buffer && UTF8Decoder) {
+        return UTF8Decoder.decode(heapOrArray.subarray(idx, endPtr));
+      }
+      var str = "";
+      while (idx < endPtr) {
+        var u0 = heapOrArray[idx++];
+        if (!(u0 & 128)) {
+          str += String.fromCharCode(u0);
+          continue;
+        }
+        var u1 = heapOrArray[idx++] & 63;
+        if ((u0 & 224) == 192) {
+          str += String.fromCharCode((u0 & 31) << 6 | u1);
+          continue;
+        }
+        var u2 = heapOrArray[idx++] & 63;
+        if ((u0 & 240) == 224) {
+          u0 = (u0 & 15) << 12 | u1 << 6 | u2;
+        } else {
+          if ((u0 & 248) != 240)
+            warnOnce("Invalid UTF-8 leading byte 0x" + u0.toString(16) + " encountered when deserializing a UTF-8 string in wasm memory to a JS string!");
+          u0 = (u0 & 7) << 18 | u1 << 12 | u2 << 6 | heapOrArray[idx++] & 63;
+        }
+        if (u0 < 65536) {
+          str += String.fromCharCode(u0);
+        } else {
+          var ch = u0 - 65536;
+          str += String.fromCharCode(55296 | ch >> 10, 56320 | ch & 1023);
+        }
+      }
+      return str;
+    }
+    function UTF8ToString(ptr, maxBytesToRead) {
+      return ptr ? UTF8ArrayToString(HEAPU8, ptr, maxBytesToRead) : "";
+    }
+    function stringToUTF8Array(str, heap, outIdx, maxBytesToWrite) {
+      if (!(maxBytesToWrite > 0))
+        return 0;
+      var startIdx = outIdx;
+      var endIdx = outIdx + maxBytesToWrite - 1;
+      for (var i2 = 0; i2 < str.length; ++i2) {
+        var u = str.charCodeAt(i2);
+        if (u >= 55296 && u <= 57343) {
+          var u1 = str.charCodeAt(++i2);
+          u = 65536 + ((u & 1023) << 10) | u1 & 1023;
+        }
+        if (u <= 127) {
+          if (outIdx >= endIdx)
+            break;
+          heap[outIdx++] = u;
+        } else if (u <= 2047) {
+          if (outIdx + 1 >= endIdx)
+            break;
+          heap[outIdx++] = 192 | u >> 6;
+          heap[outIdx++] = 128 | u & 63;
+        } else if (u <= 65535) {
+          if (outIdx + 2 >= endIdx)
+            break;
+          heap[outIdx++] = 224 | u >> 12;
+          heap[outIdx++] = 128 | u >> 6 & 63;
+          heap[outIdx++] = 128 | u & 63;
+        } else {
+          if (outIdx + 3 >= endIdx)
+            break;
+          if (u > 1114111)
+            warnOnce("Invalid Unicode code point 0x" + u.toString(16) + " encountered when serializing a JS string to a UTF-8 string in wasm memory! (Valid unicode code points should be in range 0-0x10FFFF).");
+          heap[outIdx++] = 240 | u >> 18;
+          heap[outIdx++] = 128 | u >> 12 & 63;
+          heap[outIdx++] = 128 | u >> 6 & 63;
+          heap[outIdx++] = 128 | u & 63;
+        }
+      }
+      heap[outIdx] = 0;
+      return outIdx - startIdx;
+    }
+    function stringToUTF8(str, outPtr, maxBytesToWrite) {
+      assert2(typeof maxBytesToWrite == "number", "stringToUTF8(str, outPtr, maxBytesToWrite) is missing the third parameter that specifies the length of the output buffer!");
+      return stringToUTF8Array(str, HEAPU8, outPtr, maxBytesToWrite);
+    }
+    var buffer, HEAP8, HEAPU8, HEAP16, HEAPU16, HEAP32, HEAPU32, HEAPF32, HEAPF64;
+    function updateGlobalBufferAndViews(buf) {
+      buffer = buf;
+      Module3["HEAP8"] = HEAP8 = new Int8Array(buf);
+      Module3["HEAP16"] = HEAP16 = new Int16Array(buf);
+      Module3["HEAP32"] = HEAP32 = new Int32Array(buf);
+      Module3["HEAPU8"] = HEAPU8 = new Uint8Array(buf);
+      Module3["HEAPU16"] = HEAPU16 = new Uint16Array(buf);
+      Module3["HEAPU32"] = HEAPU32 = new Uint32Array(buf);
+      Module3["HEAPF32"] = HEAPF32 = new Float32Array(buf);
+      Module3["HEAPF64"] = HEAPF64 = new Float64Array(buf);
+    }
+    var TOTAL_STACK = 5242880;
+    if (Module3["TOTAL_STACK"])
+      assert2(TOTAL_STACK === Module3["TOTAL_STACK"], "the stack size can no longer be determined at runtime");
+    var INITIAL_MEMORY = Module3["INITIAL_MEMORY"] || 16777216;
+    legacyModuleProp("INITIAL_MEMORY", "INITIAL_MEMORY");
+    assert2(INITIAL_MEMORY >= TOTAL_STACK, "INITIAL_MEMORY should be larger than TOTAL_STACK, was " + INITIAL_MEMORY + "! (TOTAL_STACK=" + TOTAL_STACK + ")");
+    assert2(typeof Int32Array != "undefined" && typeof Float64Array !== "undefined" && Int32Array.prototype.subarray != void 0 && Int32Array.prototype.set != void 0, "JS engine does not provide full typed array support");
+    assert2(!Module3["wasmMemory"], "Use of `wasmMemory` detected.  Use -sIMPORTED_MEMORY to define wasmMemory externally");
+    assert2(INITIAL_MEMORY == 16777216, "Detected runtime INITIAL_MEMORY setting.  Use -sIMPORTED_MEMORY to define wasmMemory dynamically");
+    var wasmTable;
+    function writeStackCookie() {
+      var max = _emscripten_stack_get_end();
+      assert2((max & 3) == 0);
+      HEAPU32[max >> 2] = 34821223;
+      HEAPU32[max + 4 >> 2] = 2310721022;
+      HEAPU32[0] = 1668509029;
+    }
+    function checkStackCookie() {
+      if (ABORT)
+        return;
+      var max = _emscripten_stack_get_end();
+      var cookie1 = HEAPU32[max >> 2];
+      var cookie2 = HEAPU32[max + 4 >> 2];
+      if (cookie1 != 34821223 || cookie2 != 2310721022) {
+        abort("Stack overflow! Stack cookie has been overwritten at 0x" + max.toString(16) + ", expected hex dwords 0x89BACDFE and 0x2135467, but received 0x" + cookie2.toString(16) + " 0x" + cookie1.toString(16));
+      }
+      if (HEAPU32[0] !== 1668509029)
+        abort("Runtime error: The application has corrupted its heap memory area (address zero)!");
+    }
+    (function() {
+      var h16 = new Int16Array(1);
+      var h8 = new Int8Array(h16.buffer);
+      h16[0] = 25459;
+      if (h8[0] !== 115 || h8[1] !== 99)
+        throw "Runtime error: expected the system to be little-endian! (Run with -sSUPPORT_BIG_ENDIAN to bypass)";
+    })();
+    var __ATPRERUN__ = [];
+    var __ATINIT__ = [];
+    var __ATPOSTRUN__ = [];
+    var runtimeInitialized = false;
+    function preRun() {
+      if (Module3["preRun"]) {
+        if (typeof Module3["preRun"] == "function")
+          Module3["preRun"] = [Module3["preRun"]];
+        while (Module3["preRun"].length) {
+          addOnPreRun(Module3["preRun"].shift());
+        }
+      }
+      callRuntimeCallbacks(__ATPRERUN__);
+    }
+    function initRuntime() {
+      assert2(!runtimeInitialized);
+      runtimeInitialized = true;
+      checkStackCookie();
+      callRuntimeCallbacks(__ATINIT__);
+    }
+    function postRun() {
+      checkStackCookie();
+      if (Module3["postRun"]) {
+        if (typeof Module3["postRun"] == "function")
+          Module3["postRun"] = [Module3["postRun"]];
+        while (Module3["postRun"].length) {
+          addOnPostRun(Module3["postRun"].shift());
+        }
+      }
+      callRuntimeCallbacks(__ATPOSTRUN__);
+    }
+    function addOnPreRun(cb) {
+      __ATPRERUN__.unshift(cb);
+    }
+    function addOnInit(cb) {
+      __ATINIT__.unshift(cb);
+    }
+    function addOnPostRun(cb) {
+      __ATPOSTRUN__.unshift(cb);
+    }
+    assert2(Math.imul, "This browser does not support Math.imul(), build with LEGACY_VM_SUPPORT or POLYFILL_OLD_MATH_FUNCTIONS to add in a polyfill");
+    assert2(Math.fround, "This browser does not support Math.fround(), build with LEGACY_VM_SUPPORT or POLYFILL_OLD_MATH_FUNCTIONS to add in a polyfill");
+    assert2(Math.clz32, "This browser does not support Math.clz32(), build with LEGACY_VM_SUPPORT or POLYFILL_OLD_MATH_FUNCTIONS to add in a polyfill");
+    assert2(Math.trunc, "This browser does not support Math.trunc(), build with LEGACY_VM_SUPPORT or POLYFILL_OLD_MATH_FUNCTIONS to add in a polyfill");
+    var runDependencies = 0;
+    var runDependencyWatcher = null;
+    var dependenciesFulfilled = null;
+    var runDependencyTracking = {};
+    function addRunDependency2(id) {
+      runDependencies++;
+      if (Module3["monitorRunDependencies"]) {
+        Module3["monitorRunDependencies"](runDependencies);
+      }
+      if (id) {
+        assert2(!runDependencyTracking[id]);
+        runDependencyTracking[id] = 1;
+        if (runDependencyWatcher === null && typeof setInterval != "undefined") {
+          runDependencyWatcher = setInterval(function() {
+            if (ABORT) {
+              clearInterval(runDependencyWatcher);
+              runDependencyWatcher = null;
+              return;
+            }
+            var shown = false;
+            for (var dep in runDependencyTracking) {
+              if (!shown) {
+                shown = true;
+                err("still waiting on run dependencies:");
+              }
+              err("dependency: " + dep);
+            }
+            if (shown) {
+              err("(end of list)");
+            }
+          }, 1e4);
+        }
+      } else {
+        err("warning: run dependency added without ID");
+      }
+    }
+    function removeRunDependency2(id) {
+      runDependencies--;
+      if (Module3["monitorRunDependencies"]) {
+        Module3["monitorRunDependencies"](runDependencies);
+      }
+      if (id) {
+        assert2(runDependencyTracking[id]);
+        delete runDependencyTracking[id];
+      } else {
+        err("warning: run dependency removed without ID");
+      }
+      if (runDependencies == 0) {
+        if (runDependencyWatcher !== null) {
+          clearInterval(runDependencyWatcher);
+          runDependencyWatcher = null;
+        }
+        if (dependenciesFulfilled) {
+          var callback = dependenciesFulfilled;
+          dependenciesFulfilled = null;
+          callback();
+        }
+      }
+    }
+    function abort(what) {
+      {
+        if (Module3["onAbort"]) {
+          Module3["onAbort"](what);
+        }
+      }
+      what = "Aborted(" + what + ")";
+      err(what);
+      ABORT = true;
+      EXITSTATUS = 1;
+      var e = new WebAssembly.RuntimeError(what);
+      readyPromiseReject(e);
+      throw e;
+    }
+    var FS = { error: function() {
+      abort("Filesystem support (FS) was not included. The problem is that you are using files from JS, but files were not used from C/C++, so filesystem support was not auto-included. You can force-include filesystem support with -sFORCE_FILESYSTEM");
+    }, init: function() {
+      FS.error();
+    }, createDataFile: function() {
+      FS.error();
+    }, createPreloadedFile: function() {
+      FS.error();
+    }, createLazyFile: function() {
+      FS.error();
+    }, open: function() {
+      FS.error();
+    }, mkdev: function() {
+      FS.error();
+    }, registerDevice: function() {
+      FS.error();
+    }, analyzePath: function() {
+      FS.error();
+    }, loadFilesFromDB: function() {
+      FS.error();
+    }, ErrnoError: function ErrnoError() {
+      FS.error();
+    } };
+    Module3["FS_createDataFile"] = FS.createDataFile;
+    Module3["FS_createPreloadedFile"] = FS.createPreloadedFile;
+    var dataURIPrefix = "data:application/octet-stream;base64,";
+    function isDataURI(filename) {
+      return filename.startsWith(dataURIPrefix);
+    }
+    function isFileURI(filename) {
+      return filename.startsWith("file://");
+    }
+    function createExportWrapper(name, fixedasm) {
+      return function() {
+        var displayName = name;
+        var asm2 = fixedasm;
+        if (!fixedasm) {
+          asm2 = Module3["asm"];
+        }
+        assert2(runtimeInitialized, "native function `" + displayName + "` called before runtime initialization");
+        if (!asm2[name]) {
+          assert2(asm2[name], "exported native function `" + displayName + "` not found");
+        }
+        return asm2[name].apply(null, arguments);
+      };
+    }
+    var wasmBinaryFile;
+    if (Module3["locateFile"]) {
+      wasmBinaryFile = "meshoptimizer.wasm";
+      if (!isDataURI(wasmBinaryFile)) {
+        wasmBinaryFile = locateFile(wasmBinaryFile);
+      }
+    } else {
+      wasmBinaryFile = new URL("meshoptimizer.wasm", import.meta.url).toString();
+    }
+    function getBinary(file) {
+      try {
+        if (file == wasmBinaryFile && wasmBinary) {
+          return new Uint8Array(wasmBinary);
+        }
+        if (readBinary) {
+          return readBinary(file);
+        }
+        throw "both async and sync fetching of the wasm failed";
+      } catch (err2) {
+        abort(err2);
+      }
+    }
+    function getBinaryPromise() {
+      if (!wasmBinary && (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER2)) {
+        if (typeof fetch == "function") {
+          return fetch(wasmBinaryFile, { credentials: "same-origin" }).then(function(response) {
+            if (!response["ok"]) {
+              throw "failed to load wasm binary file at '" + wasmBinaryFile + "'";
+            }
+            return response["arrayBuffer"]();
+          }).catch(function() {
+            return getBinary(wasmBinaryFile);
+          });
+        }
+      }
+      return Promise.resolve().then(function() {
+        return getBinary(wasmBinaryFile);
+      });
+    }
+    function createWasm() {
+      var info = { "env": asmLibraryArg, "wasi_snapshot_preview1": asmLibraryArg };
+      function receiveInstance(instance, module) {
+        var exports2 = instance.exports;
+        Module3["asm"] = exports2;
+        wasmMemory = Module3["asm"]["memory"];
+        assert2(wasmMemory, "memory not found in wasm exports");
+        updateGlobalBufferAndViews(wasmMemory.buffer);
+        wasmTable = Module3["asm"]["__indirect_function_table"];
+        assert2(wasmTable, "table not found in wasm exports");
+        addOnInit(Module3["asm"]["__wasm_call_ctors"]);
+        removeRunDependency2("wasm-instantiate");
+      }
+      addRunDependency2("wasm-instantiate");
+      var trueModule = Module3;
+      function receiveInstantiationResult(result) {
+        assert2(Module3 === trueModule, "the Module object should not be replaced during async compilation - perhaps the order of HTML elements is wrong?");
+        trueModule = null;
+        receiveInstance(result["instance"]);
+      }
+      function instantiateArrayBuffer(receiver) {
+        return getBinaryPromise().then(function(binary) {
+          return WebAssembly.instantiate(binary, info);
+        }).then(function(instance) {
+          return instance;
+        }).then(receiver, function(reason) {
+          err("failed to asynchronously prepare wasm: " + reason);
+          if (isFileURI(wasmBinaryFile)) {
+            err("warning: Loading from a file URI (" + wasmBinaryFile + ") is not supported in most browsers. See https://emscripten.org/docs/getting_started/FAQ.html#how-do-i-run-a-local-webserver-for-testing-why-does-my-program-stall-in-downloading-or-preparing");
+          }
+          abort(reason);
+        });
+      }
+      function instantiateAsync() {
+        if (!wasmBinary && typeof WebAssembly.instantiateStreaming == "function" && !isDataURI(wasmBinaryFile) && typeof fetch == "function") {
+          return fetch(wasmBinaryFile, { credentials: "same-origin" }).then(function(response) {
+            var result = WebAssembly.instantiateStreaming(response, info);
+            return result.then(receiveInstantiationResult, function(reason) {
+              err("wasm streaming compile failed: " + reason);
+              err("falling back to ArrayBuffer instantiation");
+              return instantiateArrayBuffer(receiveInstantiationResult);
+            });
+          });
+        } else {
+          return instantiateArrayBuffer(receiveInstantiationResult);
+        }
+      }
+      if (Module3["instantiateWasm"]) {
+        try {
+          var exports = Module3["instantiateWasm"](info, receiveInstance);
+          return exports;
+        } catch (e) {
+          err("Module.instantiateWasm callback failed with error: " + e);
+          readyPromiseReject(e);
+        }
+      }
+      instantiateAsync().catch(readyPromiseReject);
+      return {};
+    }
+    var tempDouble;
+    var tempI64;
+    function ExitStatus(status) {
+      this.name = "ExitStatus";
+      this.message = "Program terminated with exit(" + status + ")";
+      this.status = status;
+    }
+    function callRuntimeCallbacks(callbacks) {
+      while (callbacks.length > 0) {
+        callbacks.shift()(Module3);
+      }
+    }
+    function demangle(func) {
+      warnOnce("warning: build with -sDEMANGLE_SUPPORT to link in libcxxabi demangling");
+      return func;
+    }
+    function demangleAll(text) {
+      var regex = /\b_Z[\w\d_]+/g;
+      return text.replace(regex, function(x) {
+        var y = demangle(x);
+        return x === y ? x : y + " [" + x + "]";
+      });
+    }
+    function jsStackTrace() {
+      var error = new Error();
+      if (!error.stack) {
+        try {
+          throw new Error();
+        } catch (e) {
+          error = e;
+        }
+        if (!error.stack) {
+          return "(no stack trace available)";
+        }
+      }
+      return error.stack.toString();
+    }
+    function warnOnce(text) {
+      if (!warnOnce.shown)
+        warnOnce.shown = {};
+      if (!warnOnce.shown[text]) {
+        warnOnce.shown[text] = 1;
+        err(text);
+      }
+    }
+    function writeArrayToMemory(array, buffer2) {
+      assert2(array.length >= 0, "writeArrayToMemory array must have a length (should be an array or typed array)");
+      HEAP8.set(array, buffer2);
+    }
+    function ___assert_fail(condition, filename, line, func) {
+      abort("Assertion failed: " + UTF8ToString(condition) + ", at: " + [filename ? UTF8ToString(filename) : "unknown filename", line, func ? UTF8ToString(func) : "unknown function"]);
+    }
+    function _abort() {
+      abort("native code called abort()");
+    }
+    function _emscripten_memcpy_big(dest, src, num) {
+      HEAPU8.copyWithin(dest, src, src + num);
+    }
+    function getHeapMax() {
+      return 2147483648;
+    }
+    function emscripten_realloc_buffer(size) {
+      try {
+        wasmMemory.grow(size - buffer.byteLength + 65535 >>> 16);
+        updateGlobalBufferAndViews(wasmMemory.buffer);
+        return 1;
+      } catch (e) {
+        err("emscripten_realloc_buffer: Attempted to grow heap from " + buffer.byteLength + " bytes to " + size + " bytes, but got error: " + e);
+      }
+    }
+    function _emscripten_resize_heap(requestedSize) {
+      var oldSize = HEAPU8.length;
+      requestedSize = requestedSize >>> 0;
+      assert2(requestedSize > oldSize);
+      var maxHeapSize = getHeapMax();
+      if (requestedSize > maxHeapSize) {
+        err("Cannot enlarge memory, asked to go up to " + requestedSize + " bytes, but the limit is " + maxHeapSize + " bytes!");
+        return false;
+      }
+      let alignUp = (x, multiple) => x + (multiple - x % multiple) % multiple;
+      for (var cutDown = 1; cutDown <= 4; cutDown *= 2) {
+        var overGrownHeapSize = oldSize * (1 + 0.2 / cutDown);
+        overGrownHeapSize = Math.min(overGrownHeapSize, requestedSize + 100663296);
+        var newSize = Math.min(maxHeapSize, alignUp(Math.max(requestedSize, overGrownHeapSize), 65536));
+        var replacement = emscripten_realloc_buffer(newSize);
+        if (replacement) {
+          return true;
+        }
+      }
+      err("Failed to grow the heap from " + oldSize + " bytes to " + newSize + " bytes, not enough memory!");
+      return false;
+    }
+    function getCFunc(ident) {
+      var func = Module3["_" + ident];
+      assert2(func, "Cannot call unknown function " + ident + ", make sure it is exported");
+      return func;
+    }
+    function ccall(ident, returnType, argTypes, args, opts) {
+      var toC = { "string": (str) => {
+        var ret2 = 0;
+        if (str !== null && str !== void 0 && str !== 0) {
+          var len = (str.length << 2) + 1;
+          ret2 = stackAlloc(len);
+          stringToUTF8(str, ret2, len);
+        }
+        return ret2;
+      }, "array": (arr) => {
+        var ret2 = stackAlloc(arr.length);
+        writeArrayToMemory(arr, ret2);
+        return ret2;
+      } };
+      function convertReturnValue(ret2) {
+        if (returnType === "string") {
+          return UTF8ToString(ret2);
+        }
+        if (returnType === "boolean")
+          return Boolean(ret2);
+        return ret2;
+      }
+      var func = getCFunc(ident);
+      var cArgs = [];
+      var stack = 0;
+      assert2(returnType !== "array", 'Return type should not be "array".');
+      if (args) {
+        for (var i2 = 0; i2 < args.length; i2++) {
+          var converter = toC[argTypes[i2]];
+          if (converter) {
+            if (stack === 0)
+              stack = stackSave();
+            cArgs[i2] = converter(args[i2]);
+          } else {
+            cArgs[i2] = args[i2];
+          }
+        }
+      }
+      var ret = func.apply(null, cArgs);
+      function onDone(ret2) {
+        if (stack !== 0)
+          stackRestore(stack);
+        return convertReturnValue(ret2);
+      }
+      ret = onDone(ret);
+      return ret;
+    }
+    function cwrap(ident, returnType, argTypes, opts) {
+      return function() {
+        return ccall(ident, returnType, argTypes, arguments, opts);
+      };
+    }
+    function checkIncomingModuleAPI() {
+      ignoredModuleProp("fetchSettings");
+    }
+    var asmLibraryArg = { "__assert_fail": ___assert_fail, "abort": _abort, "emscripten_memcpy_big": _emscripten_memcpy_big, "emscripten_resize_heap": _emscripten_resize_heap };
+    var asm = createWasm();
+    var ___wasm_call_ctors = Module3["___wasm_call_ctors"] = createExportWrapper("__wasm_call_ctors");
+    var _meshopt_buildMeshletsBound = Module3["_meshopt_buildMeshletsBound"] = createExportWrapper("meshopt_buildMeshletsBound");
+    var _meshopt_buildMeshlets = Module3["_meshopt_buildMeshlets"] = createExportWrapper("meshopt_buildMeshlets");
+    var _meshopt_buildMeshletsScan = Module3["_meshopt_buildMeshletsScan"] = createExportWrapper("meshopt_buildMeshletsScan");
+    var _meshopt_simplify = Module3["_meshopt_simplify"] = createExportWrapper("meshopt_simplify");
+    var _meshopt_generateVertexRemap = Module3["_meshopt_generateVertexRemap"] = createExportWrapper("meshopt_generateVertexRemap");
+    var _meshopt_remapVertexBuffer = Module3["_meshopt_remapVertexBuffer"] = createExportWrapper("meshopt_remapVertexBuffer");
+    var _meshopt_remapIndexBuffer = Module3["_meshopt_remapIndexBuffer"] = createExportWrapper("meshopt_remapIndexBuffer");
+    var ___errno_location = Module3["___errno_location"] = createExportWrapper("__errno_location");
+    var _fflush = Module3["_fflush"] = createExportWrapper("fflush");
+    var _malloc = Module3["_malloc"] = createExportWrapper("malloc");
+    var _emscripten_stack_init = Module3["_emscripten_stack_init"] = function() {
+      return (_emscripten_stack_init = Module3["_emscripten_stack_init"] = Module3["asm"]["emscripten_stack_init"]).apply(null, arguments);
+    };
+    var _emscripten_stack_get_free = Module3["_emscripten_stack_get_free"] = function() {
+      return (_emscripten_stack_get_free = Module3["_emscripten_stack_get_free"] = Module3["asm"]["emscripten_stack_get_free"]).apply(null, arguments);
+    };
+    var _emscripten_stack_get_base = Module3["_emscripten_stack_get_base"] = function() {
+      return (_emscripten_stack_get_base = Module3["_emscripten_stack_get_base"] = Module3["asm"]["emscripten_stack_get_base"]).apply(null, arguments);
+    };
+    var _emscripten_stack_get_end = Module3["_emscripten_stack_get_end"] = function() {
+      return (_emscripten_stack_get_end = Module3["_emscripten_stack_get_end"] = Module3["asm"]["emscripten_stack_get_end"]).apply(null, arguments);
+    };
+    var stackSave = Module3["stackSave"] = createExportWrapper("stackSave");
+    var stackRestore = Module3["stackRestore"] = createExportWrapper("stackRestore");
+    var stackAlloc = Module3["stackAlloc"] = createExportWrapper("stackAlloc");
+    Module3["ccall"] = ccall;
+    Module3["cwrap"] = cwrap;
+    var unexportedRuntimeSymbols = ["run", "UTF8ArrayToString", "UTF8ToString", "stringToUTF8Array", "stringToUTF8", "lengthBytesUTF8", "addOnPreRun", "addOnInit", "addOnPreMain", "addOnExit", "addOnPostRun", "addRunDependency", "removeRunDependency", "FS_createFolder", "FS_createPath", "FS_createDataFile", "FS_createPreloadedFile", "FS_createLazyFile", "FS_createLink", "FS_createDevice", "FS_unlink", "getLEB", "getFunctionTables", "alignFunctionTables", "registerFunctions", "prettyPrint", "getCompilerSetting", "print", "printErr", "callMain", "abort", "keepRuntimeAlive", "wasmMemory", "stackAlloc", "stackSave", "stackRestore", "getTempRet0", "setTempRet0", "writeStackCookie", "checkStackCookie", "ptrToString", "zeroMemory", "stringToNewUTF8", "exitJS", "getHeapMax", "emscripten_realloc_buffer", "ENV", "ERRNO_CODES", "ERRNO_MESSAGES", "setErrNo", "inetPton4", "inetNtop4", "inetPton6", "inetNtop6", "readSockaddr", "writeSockaddr", "DNS", "getHostByName", "Protocols", "Sockets", "getRandomDevice", "warnOnce", "traverseStack", "UNWIND_CACHE", "convertPCtoSourceLocation", "readAsmConstArgsArray", "readAsmConstArgs", "mainThreadEM_ASM", "jstoi_q", "jstoi_s", "getExecutableName", "listenOnce", "autoResumeAudioContext", "dynCallLegacy", "getDynCaller", "dynCall", "handleException", "runtimeKeepalivePush", "runtimeKeepalivePop", "callUserCallback", "maybeExit", "safeSetTimeout", "asmjsMangle", "asyncLoad", "alignMemory", "mmapAlloc", "writeI53ToI64", "writeI53ToI64Clamped", "writeI53ToI64Signaling", "writeI53ToU64Clamped", "writeI53ToU64Signaling", "readI53FromI64", "readI53FromU64", "convertI32PairToI53", "convertI32PairToI53Checked", "convertU32PairToI53", "getCFunc", "uleb128Encode", "sigToWasmTypes", "generateFuncType", "convertJsFunctionToWasm", "freeTableIndexes", "functionsInTableMap", "getEmptyTableSlot", "updateTableMap", "addFunction", "removeFunction", "reallyNegative", "unSign", "strLen", "reSign", "formatString", "setValue", "getValue", "PATH", "PATH_FS", "intArrayFromString", "intArrayToString", "AsciiToString", "stringToAscii", "UTF16Decoder", "UTF16ToString", "stringToUTF16", "lengthBytesUTF16", "UTF32ToString", "stringToUTF32", "lengthBytesUTF32", "allocateUTF8", "allocateUTF8OnStack", "writeStringToMemory", "writeArrayToMemory", "writeAsciiToMemory", "SYSCALLS", "getSocketFromFD", "getSocketAddress", "JSEvents", "registerKeyEventCallback", "specialHTMLTargets", "maybeCStringToJsString", "findEventTarget", "findCanvasEventTarget", "getBoundingClientRect", "fillMouseEventData", "registerMouseEventCallback", "registerWheelEventCallback", "registerUiEventCallback", "registerFocusEventCallback", "fillDeviceOrientationEventData", "registerDeviceOrientationEventCallback", "fillDeviceMotionEventData", "registerDeviceMotionEventCallback", "screenOrientation", "fillOrientationChangeEventData", "registerOrientationChangeEventCallback", "fillFullscreenChangeEventData", "registerFullscreenChangeEventCallback", "JSEvents_requestFullscreen", "JSEvents_resizeCanvasForFullscreen", "registerRestoreOldStyle", "hideEverythingExceptGivenElement", "restoreHiddenElements", "setLetterbox", "currentFullscreenStrategy", "restoreOldWindowedStyle", "softFullscreenResizeWebGLRenderTarget", "doRequestFullscreen", "fillPointerlockChangeEventData", "registerPointerlockChangeEventCallback", "registerPointerlockErrorEventCallback", "requestPointerLock", "fillVisibilityChangeEventData", "registerVisibilityChangeEventCallback", "registerTouchEventCallback", "fillGamepadEventData", "registerGamepadEventCallback", "registerBeforeUnloadEventCallback", "fillBatteryEventData", "battery", "registerBatteryEventCallback", "setCanvasElementSize", "getCanvasElementSize", "demangle", "demangleAll", "jsStackTrace", "stackTrace", "ExitStatus", "getEnvStrings", "checkWasiClock", "flush_NO_FILESYSTEM", "dlopenMissingError", "createDyncallWrapper", "setImmediateWrapped", "clearImmediateWrapped", "polyfillSetImmediate", "uncaughtExceptionCount", "exceptionLast", "exceptionCaught", "ExceptionInfo", "exception_addRef", "exception_decRef", "Browser", "setMainLoop", "wget", "FS", "MEMFS", "TTY", "PIPEFS", "SOCKFS", "_setNetworkCallback", "tempFixedLengthArray", "miniTempWebGLFloatBuffers", "heapObjectForWebGLType", "heapAccessShiftForWebGLHeap", "GL", "emscriptenWebGLGet", "computeUnpackAlignedImageSize", "emscriptenWebGLGetTexPixelData", "emscriptenWebGLGetUniform", "webglGetUniformLocation", "webglPrepareUniformLocationsBeforeFirstUse", "webglGetLeftBracePos", "emscriptenWebGLGetVertexAttrib", "writeGLArray", "AL", "SDL_unicode", "SDL_ttfContext", "SDL_audio", "SDL", "SDL_gfx", "GLUT", "EGL", "GLFW_Window", "GLFW", "GLEW", "IDBStore", "runAndAbortIfError", "ALLOC_NORMAL", "ALLOC_STACK", "allocate"];
+    unexportedRuntimeSymbols.forEach(unexportedRuntimeSymbol);
+    var missingLibrarySymbols = ["ptrToString", "zeroMemory", "stringToNewUTF8", "exitJS", "setErrNo", "inetPton4", "inetNtop4", "inetPton6", "inetNtop6", "readSockaddr", "writeSockaddr", "getHostByName", "getRandomDevice", "traverseStack", "convertPCtoSourceLocation", "readAsmConstArgs", "mainThreadEM_ASM", "jstoi_q", "jstoi_s", "getExecutableName", "listenOnce", "autoResumeAudioContext", "dynCallLegacy", "getDynCaller", "dynCall", "runtimeKeepalivePush", "runtimeKeepalivePop", "callUserCallback", "maybeExit", "safeSetTimeout", "asmjsMangle", "asyncLoad", "alignMemory", "mmapAlloc", "writeI53ToI64", "writeI53ToI64Clamped", "writeI53ToI64Signaling", "writeI53ToU64Clamped", "writeI53ToU64Signaling", "readI53FromI64", "readI53FromU64", "convertI32PairToI53", "convertI32PairToI53Checked", "convertU32PairToI53", "uleb128Encode", "sigToWasmTypes", "generateFuncType", "convertJsFunctionToWasm", "getEmptyTableSlot", "updateTableMap", "addFunction", "removeFunction", "reallyNegative", "unSign", "strLen", "reSign", "formatString", "intArrayFromString", "intArrayToString", "AsciiToString", "stringToAscii", "UTF16ToString", "stringToUTF16", "lengthBytesUTF16", "UTF32ToString", "stringToUTF32", "lengthBytesUTF32", "allocateUTF8", "allocateUTF8OnStack", "writeStringToMemory", "writeAsciiToMemory", "getSocketFromFD", "getSocketAddress", "registerKeyEventCallback", "maybeCStringToJsString", "findEventTarget", "findCanvasEventTarget", "getBoundingClientRect", "fillMouseEventData", "registerMouseEventCallback", "registerWheelEventCallback", "registerUiEventCallback", "registerFocusEventCallback", "fillDeviceOrientationEventData", "registerDeviceOrientationEventCallback", "fillDeviceMotionEventData", "registerDeviceMotionEventCallback", "screenOrientation", "fillOrientationChangeEventData", "registerOrientationChangeEventCallback", "fillFullscreenChangeEventData", "registerFullscreenChangeEventCallback", "JSEvents_requestFullscreen", "JSEvents_resizeCanvasForFullscreen", "registerRestoreOldStyle", "hideEverythingExceptGivenElement", "restoreHiddenElements", "setLetterbox", "softFullscreenResizeWebGLRenderTarget", "doRequestFullscreen", "fillPointerlockChangeEventData", "registerPointerlockChangeEventCallback", "registerPointerlockErrorEventCallback", "requestPointerLock", "fillVisibilityChangeEventData", "registerVisibilityChangeEventCallback", "registerTouchEventCallback", "fillGamepadEventData", "registerGamepadEventCallback", "registerBeforeUnloadEventCallback", "fillBatteryEventData", "battery", "registerBatteryEventCallback", "setCanvasElementSize", "getCanvasElementSize", "getEnvStrings", "checkWasiClock", "flush_NO_FILESYSTEM", "createDyncallWrapper", "setImmediateWrapped", "clearImmediateWrapped", "polyfillSetImmediate", "ExceptionInfo", "exception_addRef", "exception_decRef", "setMainLoop", "_setNetworkCallback", "heapObjectForWebGLType", "heapAccessShiftForWebGLHeap", "emscriptenWebGLGet", "computeUnpackAlignedImageSize", "emscriptenWebGLGetTexPixelData", "emscriptenWebGLGetUniform", "webglGetUniformLocation", "webglPrepareUniformLocationsBeforeFirstUse", "webglGetLeftBracePos", "emscriptenWebGLGetVertexAttrib", "writeGLArray", "SDL_unicode", "SDL_ttfContext", "SDL_audio", "GLFW_Window", "runAndAbortIfError", "ALLOC_NORMAL", "ALLOC_STACK", "allocate"];
+    missingLibrarySymbols.forEach(missingLibrarySymbol);
+    var calledRun;
+    dependenciesFulfilled = function runCaller() {
+      if (!calledRun)
+        run();
+      if (!calledRun)
+        dependenciesFulfilled = runCaller;
+    };
+    function stackCheckInit() {
+      _emscripten_stack_init();
+      writeStackCookie();
+    }
+    function run(args) {
+      args = args || arguments_;
+      if (runDependencies > 0) {
+        return;
+      }
+      stackCheckInit();
+      preRun();
+      if (runDependencies > 0) {
+        return;
+      }
+      function doRun() {
+        if (calledRun)
+          return;
+        calledRun = true;
+        Module3["calledRun"] = true;
+        if (ABORT)
+          return;
+        initRuntime();
+        readyPromiseResolve(Module3);
+        if (Module3["onRuntimeInitialized"])
+          Module3["onRuntimeInitialized"]();
+        assert2(!Module3["_main"], 'compiled without a main, but one is present. if you added it from JS, use Module["onRuntimeInitialized"]');
+        postRun();
+      }
+      if (Module3["setStatus"]) {
+        Module3["setStatus"]("Running...");
+        setTimeout(function() {
+          setTimeout(function() {
+            Module3["setStatus"]("");
+          }, 1);
+          doRun();
+        }, 1);
+      } else {
+        doRun();
+      }
+      checkStackCookie();
+    }
+    if (Module3["preInit"]) {
+      if (typeof Module3["preInit"] == "function")
+        Module3["preInit"] = [Module3["preInit"]];
+      while (Module3["preInit"].length > 0) {
+        Module3["preInit"].pop()();
+      }
+    }
+    run();
+    return Module3.ready;
+  };
+})();
+var meshoptimizer_default = Module2;
+
 // src/utils/MeshletSimplifier_wasm.ts
 var MeshletSimplifier_wasm = class {
   static async load() {
     if (!MeshletSimplifier_wasm.meshoptimizer_clusterize) {
       MeshletSimplifier_wasm.meshoptimizer_clusterize = await meshoptimizer_default();
-      console.log("MeshletSimplifier_wasm.meshoptimizer_clusterize", MeshletSimplifier_wasm.meshoptimizer_clusterize);
     }
   }
   static async simplify(meshlet, target_count) {
     await MeshletSimplifier_wasm.load();
     const MeshOptmizer = MeshletSimplifier_wasm.meshoptimizer_clusterize;
-    const destination = new WASMPointer(new Uint32Array(meshlet.indices.length), "out");
+    const destination = new WASMPointer(new Uint32Array(meshlet.indices_raw.length), "out");
     const simplified_index_count = WASMHelper.call(
       MeshOptmizer,
       "meshopt_simplify",
       "number",
       destination,
-      new WASMPointer(new Uint32Array(meshlet.indices)),
-      meshlet.indices.length,
-      new WASMPointer(new Float32Array(meshlet.vertices)),
-      meshlet.vertices.length,
+      new WASMPointer(new Uint32Array(meshlet.indices_raw)),
+      meshlet.indices_raw.length,
+      new WASMPointer(new Float32Array(meshlet.vertices_raw)),
+      meshlet.vertices_raw.length,
       3 * Float32Array.BYTES_PER_ELEMENT,
       target_count,
-      0.01,
-      0,
+      0.1,
+      1,
       0
     );
     const destination_resized = destination.data.slice(0, simplified_index_count);
-    console.log(destination.data);
-    console.log("Input indices", meshlet.indices.length / 3);
-    console.log("Output indices", simplified_index_count / 3);
-    return {
-      vertices: meshlet.vertices.slice(),
-      vertex_count: meshlet.vertices.length / 3,
-      indices: destination_resized,
-      index_count: destination_resized.length
-    };
+    return new Meshlet(meshlet.vertices_raw, destination_resized);
   }
 };
 
@@ -22650,28 +22245,28 @@ var MeshletCleaner = class {
   static async clean(meshlet) {
     await MeshletCleaner.load();
     const MeshOptmizer = MeshletCleaner.meshoptimizer;
-    const remap = new WASMPointer(new Uint32Array(meshlet.indices.length * 3), "out");
-    const indices = new WASMPointer(new Uint32Array(meshlet.indices), "in");
-    const vertices = new WASMPointer(new Float32Array(meshlet.vertices), "in");
+    const remap = new WASMPointer(new Uint32Array(meshlet.indices_raw.length * 3), "out");
+    const indices = new WASMPointer(new Uint32Array(meshlet.indices_raw), "in");
+    const vertices = new WASMPointer(new Float32Array(meshlet.vertices_raw), "in");
     const vertex_count = WASMHelper.call(
       MeshOptmizer,
       "meshopt_generateVertexRemap",
       "number",
       remap,
       indices,
-      meshlet.indices.length,
+      meshlet.indices_raw.length,
       vertices,
-      meshlet.vertices.length,
+      meshlet.vertices_raw.length,
       3 * Float32Array.BYTES_PER_ELEMENT
     );
-    const indices_remapped = new WASMPointer(new Uint32Array(meshlet.indices.length), "out");
+    const indices_remapped = new WASMPointer(new Uint32Array(meshlet.indices_raw.length), "out");
     WASMHelper.call(
       MeshOptmizer,
       "meshopt_remapIndexBuffer",
       "number",
       indices_remapped,
       indices,
-      meshlet.indices.length,
+      meshlet.indices_raw.length,
       remap
     );
     const vertices_remapped = new WASMPointer(new Float32Array(vertex_count * 3), "out");
@@ -22681,20 +22276,12 @@ var MeshletCleaner = class {
       "number",
       vertices_remapped,
       vertices,
-      meshlet.vertices.length,
+      meshlet.vertices_raw.length,
       3 * Float32Array.BYTES_PER_ELEMENT,
       remap
     );
-    console.log("meshlet_vertices", meshlet.vertices);
-    console.log("meshlet_indices", meshlet.indices);
-    console.log("vertices_remapped", vertices_remapped.data);
-    console.log("indices_remapped", indices_remapped.data);
-    return {
-      vertices: vertices_remapped.data,
-      vertex_count: vertices_remapped.data.length / 3,
-      indices: indices_remapped.data,
-      index_count: indices_remapped.data.length
-    };
+    const m = new Meshlet(vertices_remapped.data, indices_remapped.data);
+    return m;
   }
 };
 
@@ -22715,15 +22302,12 @@ var App = class {
     function fract(n) {
       return n % 1;
     }
-    function dot(v1, v2) {
-      return v1[0] * v2[0] + v1[1] * v2[1];
-    }
     return fract(Math.sin((co + 1) * 12.9898) * 43758.5453);
   }
   createSphere(radius, color, x, y, z) {
     let g2 = new SphereGeometry(radius);
     const m = new MeshBasicMaterial({
-      wireframe: true,
+      wireframe: false,
       side: 0,
       color
     });
@@ -22736,8 +22320,7 @@ var App = class {
     g2.setAttribute("position", new Float32BufferAttribute(vertices, 3));
     g2.setIndex(new Uint16BufferAttribute(indices, 1));
     const m = new MeshBasicMaterial({
-      wireframe: true,
-      side: 0,
+      wireframe: false,
       color: params.color ? params.color : 16777215,
       transparent: params.opacity ? true : false,
       opacity: params.opacity ? params.opacity : 0
@@ -22751,284 +22334,188 @@ var App = class {
     }
     this.scene.add(mesh);
   }
-  showMeshlets(meshlets, position, scale) {
+  showMeshlets(meshlets, position, scale, color) {
     for (let i2 = 0; i2 < meshlets.length; i2++) {
-      const meshlet_color = App.rand(i2) * 16777215;
-      this.createMesh(meshlets[i2].vertices, meshlets[i2].indices, { color: meshlet_color, position, scale });
+      const meshlet_color = color ? color : App.rand(i2) * 16777215;
+      this.createMesh(meshlets[i2].vertices_raw, meshlets[i2].indices_raw, { color: meshlet_color, position, scale });
     }
   }
-  createGeometryFromMeshlet(meshlet) {
-    const g2 = new BufferGeometry();
-    g2.setAttribute("position", new Float32BufferAttribute(meshlet.vertices, 3));
-    g2.setIndex(new Uint32BufferAttribute(meshlet.indices, 1));
-    return g2;
-  }
-  createMeshletFromGeometry(geometry) {
-    return {
-      vertices: geometry.getAttribute("position").array,
-      vertex_count: geometry.getAttribute("position").array.length / 3,
-      indices: geometry.getIndex().array,
-      index_count: geometry.getIndex().array.length
-    };
-  }
   async processObj(objURL) {
-    const dag4 = new DAG();
     OBJLoaderIndexed.load(objURL, async (objMesh) => {
       const objVertices = objMesh.vertices;
       const objIndices = objMesh.indices;
       this.createMesh(objVertices, objIndices, { opacity: 0.2, position: [-0.3, 0, 0] });
-      async function step1_cluster(vertices, indices) {
-        const meshlet_triangle_count = indices.length / 3 / 2;
-        const max_triangles = meshlet_triangle_count > 128 ? 128 : meshlet_triangle_count;
-        return await MeshletCreator.build(vertices, indices, max_triangles);
-      }
-      async function step2_group(meshlets2, nparts) {
-        const meshletGrouper = new MeshletGrouper();
-        for (let i2 = 0; i2 < meshlets2.length; i2++) {
-          meshletGrouper.addMeshlet(meshlets2[i2]);
-        }
-        const adjacencyList = meshletGrouper.buildAdjacentMeshletList(meshlets2);
-        let adjacencyListArray = [];
-        for (let entry of adjacencyList) {
-          adjacencyListArray.push(entry[1]);
-        }
-        const groupPartitions = await METISWrapper.partition(adjacencyListArray, nparts);
-        console.log("adjacencyList", adjacencyList);
-        console.log("groupPartitions", groupPartitions);
-        const groupedMeshlets2 = [];
-        for (let i2 = 0; i2 < groupPartitions.length; i2++) {
-          const group = groupPartitions[i2];
-          const groupMeshlets = [];
-          for (let j = 0; j < group.length; j++) {
-            const meshletId = group[j];
-            const meshlet = meshlets2[meshletId];
-            groupMeshlets.push(meshlet);
+      const dag4 = new DAG();
+      function addToDAG(fromMeshlets, toMeshlets, lod) {
+        for (let fromMeshlet of fromMeshlets) {
+          for (let toMeshlet of toMeshlets) {
+            dag4.add(
+              { id: `${toMeshlet.id}`, data: toMeshlet, tag: `LOD${lod}` },
+              { id: `${fromMeshlet.id}`, data: fromMeshlet, tag: `LOD${lod - 1}` }
+            );
           }
-          groupedMeshlets2.push(groupMeshlets);
         }
-        return groupedMeshlets2;
       }
-      async function step3_merge(groups) {
-        const groupedMeshlets2 = [];
+      function indexCounter(meshlets) {
+        let count = 0;
+        for (let i2 = 0; i2 < meshlets.length; i2++) {
+          if (meshlets[i2] && meshlets[i2].length) {
+            for (let j = 0; j < meshlets[i2].length; j++) {
+              count += meshlets[i2][j].indices.length;
+            }
+          } else {
+            count += meshlets[i2].indices_raw.length;
+          }
+        }
+        return count;
+      }
+      async function step1_cluster_metis(vertices, indices, parts) {
+        const faces = MeshletGrouper.buildFacesFromIndices(indices);
+        const adjacencyMatrixList = MeshletGrouper.buildFaceAdjacencyMatrix(faces);
+        const groupPartitions = await METISWrapper.partition(adjacencyMatrixList, parts);
+        const groupedMeshlets = MeshletGrouper.rebuildMeshletsFromGroupIndices(vertices, faces, groupPartitions);
+        const meshletsV32 = [];
+        for (let i2 = 0; i2 < groupedMeshlets.length; i2++) {
+          const meshlet = new Meshlet(groupedMeshlets[i2].vertices_raw, groupedMeshlets[i2].indices_raw);
+          meshletsV32.push(meshlet);
+        }
+        return meshletsV32;
+      }
+      function adjacencyList(meshlets) {
+        let vertexHashToMeshletMap = /* @__PURE__ */ new Map();
+        for (let i2 = 0; i2 < meshlets.length; i2++) {
+          const meshlet = meshlets[i2];
+          for (let j = 0; j < meshlet.boundaryEdges.length; j++) {
+            const boundaryEdge = meshlet.boundaryEdges[j];
+            const edgeHash = meshlet.getEdgeHash(boundaryEdge);
+            let meshletList = vertexHashToMeshletMap.get(edgeHash);
+            if (!meshletList)
+              meshletList = [];
+            meshletList.push(i2);
+            vertexHashToMeshletMap.set(edgeHash, meshletList);
+          }
+        }
+        const adjacencyList2 = /* @__PURE__ */ new Map();
+        for (let [_, indices] of vertexHashToMeshletMap) {
+          if (indices.length === 1)
+            continue;
+          for (let index of indices) {
+            if (!adjacencyList2.has(index)) {
+              adjacencyList2.set(index, /* @__PURE__ */ new Set());
+            }
+            for (let otherIndex of indices) {
+              if (otherIndex !== index) {
+                adjacencyList2.get(index).add(otherIndex);
+              }
+            }
+          }
+        }
+        let adjacencyListArray = [];
+        for (let [key, adjacents] of adjacencyList2) {
+          if (!adjacencyListArray[key])
+            adjacencyListArray[key] = [];
+          adjacencyListArray[key].push(...Array.from(adjacents));
+        }
+        return adjacencyListArray;
+      }
+      function rebuildMeshletsFromGroupIndicesV3(meshlets, groups) {
+        let groupedMeshlets = [];
         for (let i2 = 0; i2 < groups.length; i2++) {
-          const groupMeshlets = groups[i2];
-          const mergedMeshlet = MeshletMerger.merge(groupMeshlets);
+          if (!groupedMeshlets[i2])
+            groupedMeshlets[i2] = [];
+          for (let j = 0; j < groups[i2].length; j++) {
+            const meshletId = groups[i2][j];
+            const meshlet = meshlets[meshletId];
+            groupedMeshlets[i2].push(meshlet);
+          }
+        }
+        return groupedMeshlets;
+      }
+      const step = async (meshlets, y2, scale = [1, 1, 1]) => {
+        this.showMeshlets(meshlets, [0, y2, 0], scale);
+        const adj = adjacencyList(meshlets);
+        const MinPartitionSize = 8;
+        const MaxPartitionSize = 32;
+        const TargetPartitionSize = (MinPartitionSize + MaxPartitionSize) / 2;
+        const TargetNumPartitions = Math.ceil(adj.flat().length / TargetPartitionSize);
+        let grouped = [meshlets];
+        if (TargetNumPartitions > 1) {
+          const groups = await METISWrapper.partition(adj, TargetNumPartitions);
+          grouped = rebuildMeshletsFromGroupIndicesV3(meshlets, groups);
+        }
+        for (let i2 = 0; i2 < grouped.length; i2++) {
+          this.showMeshlets(grouped[i2], [0.3, y2, 0], scale, App.rand(i2) * 16777215);
+        }
+        async function step3_merge_v3(meshlets2) {
+          const mergedMeshlet = MeshletMerger.merge(meshlets2);
           const cleanedMeshlet = await MeshletCleaner.clean(mergedMeshlet);
-          groupedMeshlets2.push(cleanedMeshlet);
+          return cleanedMeshlet;
         }
-        return groupedMeshlets2;
-      }
-      async function step4_simplify(meshlets2) {
-        let simplifiedMeshletGroup = [];
-        for (let i2 = 0; i2 < meshlets2.length; i2++) {
-          const groupedMeshlet = meshlets2[i2];
-          const simplifiedGroup = await MeshletSimplifier_wasm.simplify(groupedMeshlet, groupedMeshlet.indices.length / 3 / 2);
-          simplifiedMeshletGroup.push(simplifiedGroup);
+        let merged = [];
+        for (let i2 = 0; i2 < grouped.length; i2++) {
+          merged.push(await step3_merge_v3(grouped[i2]));
         }
-        ;
-        return simplifiedMeshletGroup;
-      }
-      async function step5_split(meshlets2) {
-        let clusterizedMeshlets = [];
-        for (let i2 = 0; i2 < meshlets2.length; i2++) {
-          const meshlet = meshlets2[i2];
-          const clusterizedMeshlet = await step1_cluster(meshlet.vertices, meshlet.indices);
-          clusterizedMeshlets.push(clusterizedMeshlet);
+        this.showMeshlets(merged, [0.6, y2, 0], scale);
+        let simplified = [];
+        for (let i2 = 0; i2 < merged.length; i2++) {
+          const d = Math.max(merged[i2].indices_raw.length * 0.5, 128 * 3);
+          const simplifiedMeshlet = await MeshletSimplifier_wasm.simplify(merged[i2], d);
+          simplified.push(simplifiedMeshlet);
         }
-        return clusterizedMeshlets;
-      }
-      const testMeshes = [
-        {
-          color: "red",
-          scale: [1e-3, -1e-3, 1e-3],
-          positions: [
-            165,
-            224,
-            0,
-            220,
-            190,
-            0,
-            240,
-            270,
-            0,
-            165,
-            295,
-            0,
-            213,
-            355,
-            0,
-            279,
-            318,
-            0
-          ],
-          indices: [
-            0,
-            1,
-            2,
-            0,
-            2,
-            3,
-            3,
-            2,
-            4,
-            4,
-            2,
-            5
-          ]
-        },
-        {
-          color: "green",
-          scale: [1e-3, -1e-3, 1e-3],
-          positions: [
-            220,
-            190,
-            0,
-            240,
-            270,
-            0,
-            293,
-            260,
-            0,
-            279,
-            318,
-            0,
-            347,
-            287,
-            0,
-            346,
-            344,
-            0
-          ],
-          indices: [
-            0,
-            2,
-            1,
-            1,
-            2,
-            3,
-            2,
-            4,
-            3,
-            3,
-            4,
-            5
-          ]
-        },
-        {
-          color: "blue",
-          scale: [1e-3, -1e-3, 1e-3],
-          positions: [
-            279,
-            318,
-            0,
-            346,
-            344,
-            0,
-            280,
-            407,
-            0,
-            213,
-            355,
-            0,
-            203,
-            427,
-            0,
-            277,
-            473,
-            0
-          ],
-          indices: [
-            0,
-            1,
-            2,
-            0,
-            2,
-            3,
-            3,
-            2,
-            4,
-            2,
-            5,
-            4
-          ]
-        },
-        {
-          color: "yellow",
-          scale: [1e-3, -1e-3, 1e-3],
-          positions: [
-            165,
-            224,
-            0,
-            165,
-            295,
-            0,
-            105,
-            324,
-            0,
-            213,
-            355,
-            0,
-            145,
-            404,
-            0,
-            203,
-            427,
-            0
-          ],
-          indices: [
-            0,
-            1,
-            2,
-            1,
-            4,
-            2,
-            4,
-            1,
-            3,
-            4,
-            3,
-            5
-          ]
+        this.showMeshlets(simplified, [0.9, y2, 0], scale);
+        const splitMeshlets = [];
+        for (let i2 = 0; i2 < simplified.length; i2++) {
+          const parts = Math.ceil(simplified[i2].indices_raw.length / 3 / 128);
+          if (parts <= 1) {
+            splitMeshlets.push(simplified[i2]);
+            continue;
+          }
+          const split = await step1_cluster_metis(simplified[i2].vertices_raw, simplified[i2].indices_raw, parts);
+          splitMeshlets.push(...split);
         }
-      ];
-      for (let i2 = 0; i2 < testMeshes.length; i2++) {
-        const testMesh = testMeshes[i2];
-        this.createMesh(testMesh.positions, testMesh.indices, { color: testMesh.color, scale: testMesh.scale });
-      }
-      let meshlets = [];
-      for (let i2 = 0; i2 < testMeshes.length; i2++) {
-        const tm = testMeshes[i2];
-        meshlets.push({
-          vertices: tm.positions,
-          vertex_count: tm.positions.length / 3,
-          indices: tm.indices,
-          index_count: tm.indices.length
-        });
-      }
-      console.log("meshlets", meshlets);
-      const groupedMeshlets = await step2_group(meshlets, 2);
-      for (let i2 = 0; i2 < groupedMeshlets.length; i2++) {
-        const groupKey = `GROUP-${i2}`;
-        const group = groupedMeshlets[i2];
-        for (let j = 0; j < group.length; j++) {
-          const meshlet = group[j];
-          const meshletId = meshlets.indexOf(meshlet);
-          const meshletKey = `MESHLET-${j}`;
-          dag4.add(
-            { id: groupKey, data: "", tag: "LOD0" },
-            { id: meshletKey, data: meshlet, tag: "LOD0" }
-          );
+        this.showMeshlets(splitMeshlets, [1.2, y2, 0], scale);
+        return splitMeshlets;
+      };
+      const meshletsV3 = await step1_cluster_metis(objVertices, objIndices, objIndices.length / 3 / 128);
+      let input = meshletsV3;
+      let y = 0;
+      for (let i2 = 0; i2 < 10; i2++) {
+        const output = await step(input, y);
+        console.log(input.length, output.length);
+        console.log(indexCounter(input) / 3, indexCounter(output) / 3);
+        console.log("\n");
+        addToDAG(input, output, i2 + 1);
+        if (output.length === 1) {
+          break;
         }
+        input = output;
+        y -= 0.3;
       }
-      const mergedMeshlets = await step3_merge([meshlets]);
-      this.showMeshlets(mergedMeshlets, [0.3, 0, 0], [1e-3, -1e-3, 1e-3]);
-      console.log("mergedMeshlets", mergedMeshlets);
-      const simplifiedMeshlets = await step4_simplify(mergedMeshlets);
-      this.showMeshlets(simplifiedMeshlets, [0.6, 0, 0], [1e-3, -1e-3, 1e-3]);
-      const split = await step5_split(simplifiedMeshlets);
-      this.showMeshlets(split[0], [0.9, 0, 0], [1e-3, -1e-3, 1e-3]);
       K().then((viz) => {
-        document.body.appendChild(viz.renderSVGElement(dag4.toDot()));
+        const diagram = dag4.toDot();
+        document.body.appendChild(viz.renderSVGElement(diagram));
+        const canvas = document.createElement("canvas");
+        canvas.width = 500;
+        canvas.height = 500;
+        const ctx = canvas.getContext("2d");
+        ;
+        console.log(dag4);
+        let y2 = 200;
+        for (let lod of Object.keys(dag4.tagToNode)) {
+          const nodes = dag4.tagToNode[lod];
+          let x = canvas.width * 0.5 - nodes.length * 7.5;
+          for (let i2 = 0; i2 < nodes.length; i2++) {
+            ctx.beginPath();
+            ctx.arc(x + i2 * 5, y2, 5, 0, 180 / Math.PI);
+            ctx.closePath();
+            ctx.stroke();
+            x += 10;
+            console.log(x, y2);
+          }
+          y2 += 15;
+        }
+        document.body.appendChild(canvas);
+        console.log(dag4);
       });
     });
   }
