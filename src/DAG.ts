@@ -5,18 +5,18 @@ interface Node {
 }
 
 export class DAG {
-    private nodes: { [key: string]: Node };
-    private parentToChild: { [key: string]: string[] };
-    private childToParent: { [key: string]: string[] };
-    private tagToNode: { [key: string]: string[] };
-
+    public nodes: { [key: string]: Node };
+    public parentToChild: { [key: string]: string[] };
+    public childToParent: { [key: string]: string[] };
+    public tagToNode: { [key: string]: string[] };
+    
     constructor() {
         this.nodes = {};
         this.parentToChild = {};
         this.childToParent = {};
         this.tagToNode = {};
     }
-
+    
     private addRelationship(map: { [key: string]: string[] }, queryKey: string, from: string, to: string) {
         let mapArray = map[queryKey] ? map[queryKey] : [];
         if (mapArray.indexOf(to) === -1) mapArray.push(to);
@@ -39,7 +39,7 @@ export class DAG {
     }
 
     public toDot() {
-        let dotviz = `digraph G {\n`;
+        let dotviz = `digraph G {\n splines=true; overlap=false \n`;
         for (let child in this.childToParent) {
             for (let parentNode of this.childToParent[child]) {
                 dotviz += `\t"${parentNode}\n${this.nodes[parentNode].tag}" -> "${child}\n${this.nodes[child].tag}"\n`

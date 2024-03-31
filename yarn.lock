@@ -151,6 +151,10 @@ esbuild@^0.15.7:
     esbuild-windows-64 "0.15.7"
     esbuild-windows-arm64 "0.15.7"
 
+svg-pan-zoom@bumbu/svg-pan-zoom:
+  version "3.6.2"
+  resolved "https://codeload.github.com/bumbu/svg-pan-zoom/tar.gz/aaa68d186abab5d782191b66d2582592fe5d3c13"
+
 three@0.143.0:
   version "0.143.0"
   resolved "https://registry.yarnpkg.com/three/-/three-0.143.0.tgz#1455bca132cc2b20beb7f41d313e10c29e5ed9df"
