@@ -1,4 +1,4 @@
-import * as METIS from "./metis-js/metis-5.1.0/metis.js";
+import * as METIS from "./metis-5.2.1/metis.js";
 import { WASMHelper, WASMPointer } from "./utils/WasmHelper.js";
 
 export class METISWrapper {
@@ -61,7 +61,7 @@ export class METISWrapper {
         // options_array[8] = 51966; // options.seed;
         // options_array[9] = options.no2hop;
         // options_array[10] = options.minconn;
-        // options_array[11] = 1; // options.contig;
+        options_array[11] = 1; // options.contig;
         // options_array[12] = options.compress;
         // options_array[13] = options.ccorder;
         // options_array[14] = options.pfactor;
@@ -70,20 +70,20 @@ export class METISWrapper {
         // options_array[17] = options.numbering;
 
         
-        WASMHelper.call(METISWrapper.METIS, "metis_part_graph_kway", "number", 
-            _xadj.length - 1,
-            1,
-            new WASMPointer(new Uint32Array(_xadj)),
-            new WASMPointer(new Uint32Array(_adjncy)),
-            null,
-            null,
-            null,
-            nparts,
-            null,
-            null,
-            new WASMPointer(options_array),
-            objval,
-            parts,
+        WASMHelper.call(METISWrapper.METIS, "METIS_PartGraphKway", "number", 
+            new WASMPointer(new Int32Array([_xadj.length - 1])), // nvtxs
+            new WASMPointer(new Int32Array([1])),                // ncon
+            new WASMPointer(new Int32Array(_xadj)),            // xadj
+            new WASMPointer(new Int32Array(_adjncy)),          // adjncy
+            null,                                              // vwgt
+            null,                                              // vsize
+            null,                                              // adjwgt
+            new WASMPointer(new Int32Array([nparts])),           // nparts
+            null,                                              // tpwgts
+            null,                                              // ubvec
+            new WASMPointer(options_array),                    // options
+            objval,                                            // objval
+            parts,                                             // part
         )
 
         // console.log("nvtxs", _xadj.length - 1);

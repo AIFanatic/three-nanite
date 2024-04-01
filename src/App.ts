@@ -257,7 +257,10 @@ export class App {
                     this.showMeshlets([mergedGroup], [0.6, y, 0], scale, App.rand(i) * 0xffffff);
 
                     const d = Math.max(mergedGroup.indices_raw.length * 0.5, 128 * 3);
-                    const simplificationResult = await MeshletSimplifier_wasm.simplify(mergedGroup, d);
+                    let simplificationResult: SimplificationResult = {meshlet: mergedGroup, result_error: 1};
+                    if (mergedGroup.indices_raw.length / 3 > 128) {
+                        simplificationResult = await MeshletSimplifier_wasm.simplify(mergedGroup, d);
+                    }
 
                     const simplifiedGroup = simplificationResult.meshlet;
                     const simplificationError = simplificationResult.result_error;
@@ -312,7 +315,7 @@ export class App {
             }
 
             let meshletsV3 = await step1_cluster_metis(objVertices, objIndices, objIndices.length / 3 / 128);
-            meshletsV3 = meshletsV3.slice(0, 20);
+            // meshletsV3 = meshletsV3.slice(0, 20);
 
             // // const out1 = await step(meshletsV3, 0.0);
             // // const out2 = await step(out1, -0.3);
