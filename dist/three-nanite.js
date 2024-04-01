@@ -20981,6 +20981,7 @@ var METISWrapper = class {
     const parts = new WASMPointer(new Uint32Array(_xadj.length - 1), "out");
     const options_array = new Int32Array(40);
     options_array.fill(-1);
+    options_array[16] = 200;
     WASMHelper.call(
       METISWrapper.METIS,
       "metis_part_graph_kway",
@@ -21068,7 +21069,7 @@ var DAG = class {
   toDot() {
     let dotviz = `digraph G {
  splines=true; overlap=false 
-`;
+ graph [pad="0.5", nodesep="1", ranksep="2"];`;
     for (let child in this.childToParent) {
       for (let parentNode of this.childToParent[child]) {
         dotviz += `	"${parentNode}
@@ -23645,6 +23646,7 @@ var MeshletSimplifier_wasm = class {
     await MeshletSimplifier_wasm.load();
     const MeshOptmizer = MeshletSimplifier_wasm.meshoptimizer_clusterize;
     const destination = new WASMPointer(new Uint32Array(meshlet.indices_raw.length), "out");
+    const result_error = new WASMPointer(new Float32Array(1), "out");
     const simplified_index_count = WASMHelper.call(
       MeshOptmizer,
       "meshopt_simplify",
@@ -23658,10 +23660,13 @@ var MeshletSimplifier_wasm = class {
       target_count,
       0.1,
       1,
-      0
+      result_error
     );
     const destination_resized = destination.data.slice(0, simplified_index_count);
-    return new Meshlet(meshlet.vertices_raw, destination_resized);
+    return {
+      result_error: result_error.data[0],
+      meshlet: new Meshlet(meshlet.vertices_raw, destination_resized)
+    };
   }
 };
 
@@ -23751,7 +23756,7 @@ var App = class {
     g2.setAttribute("position", new Float32BufferAttribute(vertices, 3));
     g2.setIndex(new Uint16BufferAttribute(indices, 1));
     const m = new MeshBasicMaterial({
-      wireframe: true,
+      wireframe: false,
       color: params.color ? params.color : 16777215,
       transparent: params.opacity ? true : false,
       opacity: params.opacity ? params.opacity : 0
@@ -23781,12 +23786,12 @@ var App = class {
       const objIndices = objMesh.indices;
       this.createMesh(objVertices, objIndices, { opacity: 0.2, position: [-0.3, 0, 0] });
       const dag4 = new DAG();
-      function addToDAG(fromMeshlets, toMeshlets, lod) {
+      function addToDAG(fromMeshlets, toMeshlets, lod, error) {
         for (let fromMeshlet of fromMeshlets) {
           for (let toMeshlet of toMeshlets) {
             dag4.add(
-              { id: `${toMeshlet.id}`, data: toMeshlet, tag: `LOD${lod}` },
-              { id: `${fromMeshlet.id}`, data: fromMeshlet, tag: `LOD${lod - 1}` }
+              { id: `${toMeshlet.id}`, data: { meshlet: toMeshlet, result_error: error }, tag: `LOD${lod}` },
+              { id: `${fromMeshlet.id}`, data: { meshlet: fromMeshlet, result_error: error }, tag: `LOD${lod - 1}` }
             );
           }
         }
@@ -23891,21 +23896,23 @@ var App = class {
           const mergedGroup = await step3_merge_v3(group);
           this.showMeshlets([mergedGroup], [0.6, y2, 0], scale, App.rand(i2) * 16777215);
           const d = Math.max(mergedGroup.indices_raw.length * 0.5, 128 * 3);
-          const simplifiedGroup = await MeshletSimplifier_wasm.simplify(mergedGroup, d);
+          const simplificationResult = await MeshletSimplifier_wasm.simplify(mergedGroup, d);
+          const simplifiedGroup = simplificationResult.meshlet;
+          const simplificationError = simplificationResult.result_error;
           this.showMeshlets([simplifiedGroup], [0.9, y2, 0], scale, App.rand(i2) * 16777215);
           let split = [simplifiedGroup];
           const parts = Math.ceil(simplifiedGroup.indices_raw.length / 3 / 128);
           if (parts > 1) {
             split = await step1_cluster_metis(simplifiedGroup.vertices_raw, simplifiedGroup.indices_raw, parts);
           }
-          addToDAG(group, split, lod);
+          addToDAG(group, split, lod, simplificationError);
           splitOut.push(...split);
         }
         this.showMeshlets(splitOut, [1.2, y2, 0], scale);
         return splitOut;
       };
       let meshletsV3 = await step1_cluster_metis(objVertices, objIndices, objIndices.length / 3 / 128);
-      meshletsV3 = meshletsV3.slice(0, 6);
+      meshletsV3 = meshletsV3.slice(0, 20);
       let input = meshletsV3;
       let y = 0;
       for (let i2 = 0; i2 < 10; i2++) {
@@ -23939,6 +23946,7 @@ var App = class {
         diagramElement.style.height = "500px";
         diagramElement.style.top = "0";
         diagramElement.style.left = "0";
+        diagramElement.style.backgroundColor = "white";
         document.body.appendChild(diagramElement);
         (0, import_svg_pan_zoom.default)(diagramElement, {
           zoomEnabled: true,
@@ -23952,14 +23960,16 @@ var App = class {
             const texts = node.querySelectorAll("text");
             const nodeId = parseInt(texts[0].textContent);
             const dagNode = dag4.nodes[nodeId];
-            const meshlet = dagNode.data;
-            const addedIndex = addedMeshlets.indexOf(meshlet);
+            const nodeData = dagNode.data;
+            const nodeMeshlet = nodeData.meshlet;
+            nodeMeshlet.error = nodeData.result_error;
+            const addedIndex = addedMeshlets.indexOf(nodeMeshlet);
             console.log(nodeId, dagNode);
             if (box) {
               if (box.getAttribute("fill") === "none") {
                 box.setAttribute("fill", "red");
                 if (addedIndex === -1) {
-                  addedMeshlets.push(meshlet);
+                  addedMeshlets.push(nodeMeshlet);
                   updateMeshletsGroup(addedMeshletsGroup, addedMeshlets);
                 }
               } else {

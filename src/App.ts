@@ -11,7 +11,7 @@ import { METISWrapper } from "./METISWrapper";
 
 import { DAG } from "./DAG";
 import { instance } from "@viz-js/viz";
-import { MeshletSimplifier_wasm } from "./utils/MeshletSimplifier_wasm";
+import { MeshletSimplifier_wasm, SimplificationResult } from "./utils/MeshletSimplifier_wasm";
 import { MeshletCleaner } from "./utils/MeshletCleaner";
 import { Meshlet } from "./Meshlet";
 import { TEST_MESHES } from "./test";
@@ -72,7 +72,7 @@ export class App {
         g.setIndex(new THREE.Uint16BufferAttribute(indices, 1));
 
         const m = new THREE.MeshBasicMaterial({
-            wireframe: true,
+            wireframe: false,
             color: params.color ? params.color : 0xffffff,
             transparent: params.opacity ? true : false,
             opacity: params.opacity ? params.opacity : 0.0
@@ -111,13 +111,13 @@ export class App {
 
 
 
-            const dag4 = new DAG();
-            function addToDAG(fromMeshlets: Meshlet[], toMeshlets: Meshlet[], lod: number) {
+            const dag4 = new DAG<SimplificationResult>();
+            function addToDAG(fromMeshlets: Meshlet[], toMeshlets: Meshlet[], lod: number, error: number) {
                 for (let fromMeshlet of fromMeshlets) {
                     for (let toMeshlet of toMeshlets) {
                         dag4.add(
-                            { id: `${toMeshlet.id}`, data: toMeshlet, tag: `LOD${lod}` },
-                            { id: `${fromMeshlet.id}`, data: fromMeshlet, tag: `LOD${lod - 1}` }
+                            { id: `${toMeshlet.id}`, data: {meshlet: toMeshlet, result_error: error}, tag: `LOD${lod}` },
+                            { id: `${fromMeshlet.id}`, data: {meshlet: fromMeshlet, result_error: error}, tag: `LOD${lod - 1}` }
                         )
                     }
                 }
@@ -257,8 +257,10 @@ export class App {
                     this.showMeshlets([mergedGroup], [0.6, y, 0], scale, App.rand(i) * 0xffffff);
 
                     const d = Math.max(mergedGroup.indices_raw.length * 0.5, 128 * 3);
-                    const simplifiedGroup = await MeshletSimplifier_wasm.simplify(mergedGroup, d);
+                    const simplificationResult = await MeshletSimplifier_wasm.simplify(mergedGroup, d);
 
+                    const simplifiedGroup = simplificationResult.meshlet;
+                    const simplificationError = simplificationResult.result_error;
                     this.showMeshlets([simplifiedGroup], [0.9, y, 0], scale, App.rand(i) * 0xffffff);
 
                     let split = [simplifiedGroup];
@@ -266,7 +268,7 @@ export class App {
                     if (parts > 1) {
                         split = await step1_cluster_metis(simplifiedGroup.vertices_raw, simplifiedGroup.indices_raw, parts);
                     }
-                    addToDAG(group, split, lod);
+                    addToDAG(group, split, lod, simplificationError);
 
                     
                     splitOut.push(...split);
@@ -310,7 +312,7 @@ export class App {
             }
 
             let meshletsV3 = await step1_cluster_metis(objVertices, objIndices, objIndices.length / 3 / 128);
-            meshletsV3 = meshletsV3.slice(0, 6);
+            meshletsV3 = meshletsV3.slice(0, 20);
 
             // // const out1 = await step(meshletsV3, 0.0);
             // // const out2 = await step(out1, -0.3);
@@ -373,6 +375,7 @@ export class App {
                 diagramElement.style.height = "500px";
                 diagramElement.style.top = "0";
                 diagramElement.style.left = "0";
+                diagramElement.style.backgroundColor = "white";
                 document.body.appendChild(diagramElement);
 
                 svgPanZoom(diagramElement, {
@@ -392,8 +395,10 @@ export class App {
                         const nodeId = parseInt(texts[0].textContent)
 
                         const dagNode = dag4.nodes[nodeId];
-                        const meshlet = dagNode.data as Meshlet;
-                        const addedIndex = addedMeshlets.indexOf(meshlet);
+                        const nodeData = dagNode.data;
+                        const nodeMeshlet = nodeData.meshlet;
+                        nodeMeshlet.error = nodeData.result_error;
+                        const addedIndex = addedMeshlets.indexOf(nodeMeshlet);
                         console.log(nodeId, dagNode);
 
                         if (box) {
@@ -401,7 +406,7 @@ export class App {
                                 box.setAttribute("fill", "red");
 
                                 if (addedIndex === -1) {
-                                    addedMeshlets.push(meshlet);
+                                    addedMeshlets.push(nodeMeshlet);
                                     updateMeshletsGroup(addedMeshletsGroup, addedMeshlets);
                                 }
                             }
@@ -426,7 +431,7 @@ export class App {
 
                 console.log(dag4)
 
-                function sortByLOD(dag: DAG) {
+                function sortByLOD(dag: DAG<SimplificationResult>) {
                     const lodKeys = Object.keys(dag.tagToNode);
                     
                     let lodNodesArray: string[][] = new Array(lodKeys.length);

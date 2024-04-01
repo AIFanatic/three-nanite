@@ -66,7 +66,7 @@ export class METISWrapper {
         // options_array[13] = options.ccorder;
         // options_array[14] = options.pfactor;
         // options_array[15] = options.nseps;
-        // options_array[16] = 200; // options.ufactor;
+        options_array[16] = 200; // options.ufactor;
         // options_array[17] = options.numbering;
 
         

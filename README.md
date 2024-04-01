@@ -8,7 +8,7 @@
 
 Photo description:
 - 1: Original object.
-- 2: Meshletized/Clustered: Using [meshoptimizer](https://github.com/zeux/meshoptimizer).
+- 2: Meshletized/Clustered: Using [METIS](https://github.com/KarypisLab/METIS).
 - 3: Grouped meshlets: Partitions adjacent meshlets into groups using [METIS](https://github.com/KarypisLab/METIS).
 - 4: Merged grouped meshlets: Merges meshlets using [meshoptimizer](https://github.com/zeux/meshoptimizer).
 - 5: Simplification: Simplify the mesh using [meshoptimizer](https://github.com/zeux/meshoptimizer) (Garland 1997).
@@ -33,6 +33,7 @@ For now it clusters a mesh (meshlets), then groups adjacent clusters into a grou
 
 ## TODO:
 - LOD errors
+- Grouping meshlet shared boundaries
 - Build DAG and perform cuts
 - Stream geometry to GPU
 

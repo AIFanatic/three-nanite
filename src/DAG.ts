@@ -1,11 +1,11 @@
-interface Node {
+interface Node<T> {
     id: string;
     tag: string;
-    data: any;
+    data: T;
 }
 
-export class DAG {
-    public nodes: { [key: string]: Node };
+export class DAG<T> {
+    public nodes: { [key: string]: Node<T> };
     public parentToChild: { [key: string]: string[] };
     public childToParent: { [key: string]: string[] };
     public tagToNode: { [key: string]: string[] };
@@ -23,11 +23,11 @@ export class DAG {
         map[queryKey] = mapArray;
     }
 
-    private addNode(node: Node) {
+    private addNode(node: Node<T>) {
         if (!this.nodes[node.id]) this.nodes[node.id] = node;
     }
 
-    public add(parent: Node, child: Node) {
+    public add(parent: Node<T>, child: Node<T>) {
         this.addNode(parent);
         this.addNode(child);
 
@@ -39,10 +39,11 @@ export class DAG {
     }
 
     public toDot() {
-        let dotviz = `digraph G {\n splines=true; overlap=false \n`;
+        let dotviz = `digraph G {\n splines=true; overlap=false \n graph [pad="0.5", nodesep="1", ranksep="2"];`;
         for (let child in this.childToParent) {
             for (let parentNode of this.childToParent[child]) {
                 dotviz += `\t"${parentNode}\n${this.nodes[parentNode].tag}" -> "${child}\n${this.nodes[child].tag}"\n`
+                // dotviz += `\t"${parentNode}\n${this.nodes[parentNode].tag}\n${this.nodes[parentNode].data.result_error.toFixed(5)}" -> "${child}\n${this.nodes[child].tag}\n${this.nodes[child].data.result_error.toFixed(5)}"\n`
             }
         }
         dotviz += "}";
