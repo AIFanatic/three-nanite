@@ -50,24 +50,33 @@ export class METISWrapper {
         const options_array = new Int32Array(40);
         options_array.fill(-1);
 
-        // options_array[0] = options.ptype;
-        // options_array[1] = options.objtype;
-        // options_array[2] = options.ctype;
-        // options_array[3] = options.iptype;
-        // options_array[4] = options.rtype;
-        // options_array[5] = options.dbglvl;
-        // options_array[6] = options.niter;
-        // options_array[7] = options.ncuts;
-        // options_array[8] = 51966; // options.seed;
-        // options_array[9] = options.no2hop;
-        // options_array[10] = options.minconn;
-        options_array[11] = 1; // options.contig;
-        // options_array[12] = options.compress;
-        // options_array[13] = options.ccorder;
-        // options_array[14] = options.pfactor;
-        // options_array[15] = options.nseps;
-        options_array[16] = 200; // options.ufactor;
-        // options_array[17] = options.numbering;
+        // options_array[0] = // METIS_OPTION_PTYPE,
+        // options_array[1] = 0 // METIS_OPTION_OBJTYPE,
+        // options_array[2] = // METIS_OPTION_CTYPE,
+        // options_array[3] = // METIS_OPTION_IPTYPE,
+        // options_array[4] = // METIS_OPTION_RTYPE,
+        // options_array[5] = // METIS_OPTION_DBGLVL,
+        // options_array[6] = // METIS_OPTION_NIPARTS,
+        // options_array[7] = // METIS_OPTION_NITER,
+        // options_array[8] = // METIS_OPTION_NCUTS,
+        // options_array[9] = // METIS_OPTION_SEED,
+        // options_array[10] = // METIS_OPTION_ONDISK,
+        // options_array[11] = // METIS_OPTION_MINCONN,
+        // options_array[12] = 1// METIS_OPTION_CONTIG,
+        // options_array[13] = // METIS_OPTION_COMPRESS,
+        // options_array[14] = 1// METIS_OPTION_CCORDER,
+        // options_array[15] = // METIS_OPTION_PFACTOR,
+        // options_array[16] = // METIS_OPTION_NSEPS,
+        // options_array[17] = // METIS_OPTION_UFACTOR,
+        // options_array[18] = 0 // METIS_OPTION_NUMBERING,
+        // options_array[19] = // METIS_OPTION_DROPEDGES,
+        // options_array[20] = // METIS_OPTION_NO2HOP,
+        // options_array[21] = // METIS_OPTION_TWOHOP,
+        // options_array[22] = // METIS_OPTION_FAST,
+
+        // options[METIS_OPTION_OBJTYPE] = 0 // METIS_OBJTYPE_CUT;
+        // options[METIS_OPTION_CCORDER] = 1; // identify connected components first
+        // options[METIS_OPTION_NUMBERING] = 0;
 
         
         WASMHelper.call(METISWrapper.METIS, "METIS_PartGraphKway", "number", 
@@ -129,34 +138,5 @@ export class METISWrapper {
         }
 
         return parts_out;
-    }
-
-
-
-
-    public static async partition2(count: number, xadj: number[], adjncy: number[], nparts: number): Promise<Int32Array> {
-        await METISWrapper.load();
-
-
-        const objval = new WASMPointer(new Int32Array(1), "out");
-        const parts = new WASMPointer(new Int32Array(xadj.length - 1), "out");
-
-        WASMHelper.call(METISWrapper.METIS, "metis_part_graph_kway", "number", 
-            count,// xadj.length - 1,
-            1,
-            new WASMPointer(new Int32Array(xadj)),
-            new WASMPointer(new Int32Array(adjncy)),
-            null,
-            null,
-            null,
-            nparts,
-            null,
-            null,
-            null,
-            objval,
-            parts,
-        )
-
-        return parts.data as Int32Array;
     }
 }

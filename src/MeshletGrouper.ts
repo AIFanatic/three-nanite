@@ -1,105 +1,72 @@
+import { METISWrapper } from "./METISWrapper";
 import { Meshlet } from "./Meshlet"
 
 export class MeshletGrouper {
-    public static buildFacesFromIndices(indices: number[]): number[][] {
-        const faces: number[][] = [];
+    
+    public static adjacencyList(meshlets: Meshlet[]): number[][] {
 
-        for (let j = 0; j < indices.length; j += 3) {
-            const f0 = indices[j];
-            const f1 = indices[j + 1];
-            const f2 = indices[j + 2];
-            faces.push([f0, f1, f2]);
+        let vertexHashToMeshletMap: Map<string, number[]> = new Map();
+
+        for (let i = 0; i < meshlets.length; i++) {
+            const meshlet = meshlets[i];
+            for (let j = 0; j < meshlet.boundaryEdges.length; j++) {
+                const boundaryEdge = meshlet.boundaryEdges[j];
+                const edgeHash = meshlet.getEdgeHash(boundaryEdge);
+
+                let meshletList = vertexHashToMeshletMap.get(edgeHash);
+                if (!meshletList) meshletList = [];
+
+                meshletList.push(i);
+                vertexHashToMeshletMap.set(edgeHash, meshletList);
+            }
         }
-        return faces;
-    }
+        const adjacencyList: Map<number, Set<number>> = new Map();
 
-    public static getFacesFromIndices(faceIndices: number[], faces: number[][]): number[][] {
-        return faceIndices.map(faceIndex => faces[faceIndex]);
-    }
+        for (let [_, indices] of vertexHashToMeshletMap) {
+            if (indices.length === 1) continue;
 
-    public static buildFaceAdjacencyMatrix(faces: number[][]): number[][] {
-        // Map to track which faces are connected to which edges
-        const edgeToFaceMap = new Map<string, number[]>();
-
-        // Populate edgeToFaceMap
-        for (let faceIndex = 0; faceIndex < faces.length; faceIndex++) {
-            const face = faces[faceIndex];
-
-            for (let i = 0; i < 3; i++) {
-                const startIndex = face[i];
-                const endIndex = face[(i + 1) % 3];
-                const edgeKey = `${Math.min(startIndex, endIndex)}:${Math.max(startIndex, endIndex)}`;
-
-                let edgeArray = edgeToFaceMap.get(edgeKey);
-                if (!edgeArray) edgeArray = [];
-                edgeArray.push(faceIndex);
-                edgeToFaceMap.set(edgeKey, edgeArray);
+            for (let index of indices) {
+                if (!adjacencyList.has(index)) {
+                    adjacencyList.set(index, new Set());
+                }
+                for (let otherIndex of indices) {
+                    if (otherIndex !== index) {
+                        adjacencyList.get(index).add(otherIndex);
+                    }
+                }
             }
         }
 
-        // Adjacency list for faces, initially no faces are connected
-        const faceAdjacencyList: number[][] = faces.map(() => []);
 
-        // Fill faceAdjacencyList based on shared edges
-        for (let [_, connectedFaces] of edgeToFaceMap) {
-            if (connectedFaces.length !== 2) continue;
-            const [faceA, faceB] = connectedFaces;
-            faceAdjacencyList[faceA].push(faceB);
-            faceAdjacencyList[faceB].push(faceA);
+        let adjacencyListArray: number[][] = [];
+        // Finally, to array
+        for (let [key, adjacents] of adjacencyList) {
+            if (!adjacencyListArray[key]) adjacencyListArray[key] = [];
+
+            adjacencyListArray[key].push(...Array.from(adjacents));
         }
-
-        return faceAdjacencyList;
+        return adjacencyListArray;
     }
 
-    public static cleanOrphanedVertices(_vertices: number[], _faces: number[]): { cleanedVertices: number[], cleanedFaces: number[] } {
-        const vertices = MeshletGrouper.buildFacesFromIndices(_vertices);
-        const faces = MeshletGrouper.buildFacesFromIndices(_faces);
-
-        const vertexMap = new Map<number, number>(); // Maps old vertex indices to new
-        let cleanedVertices: number[][] = [];
-        let cleanedFaces: number[][] = faces.map(face => {
-            return face.map(vertexIndex => {
-                // Check if we already have this vertex in the cleaned list
-                if (vertexMap.has(vertexIndex)) {
-                    return vertexMap.get(vertexIndex);
-                } else {
-                    // Add new vertex to the cleaned list and update the mapping
-                    const newVertexIndex = cleanedVertices.length;
-                    if (vertices[vertexIndex]) {
-                        cleanedVertices.push(vertices[vertexIndex]);
-                        vertexMap.set(vertexIndex, newVertexIndex);
-                        return newVertexIndex;
-                    }
-                }
-            });
-        });
-
-        return {
-            cleanedVertices: cleanedVertices.flat(),
-            cleanedFaces: cleanedFaces.flat()
-        };
-    }
-
-    public static rebuildMeshletsFromGroupIndices(vertices: Float32Array, faces: number[][], groups: number[][]) {
-        let groupsByFaces: number[][] = new Array(groups.length);
+    public static rebuildMeshletsFromGroupIndices(meshlets: Meshlet[], groups: number[][]): Meshlet[][] {
+        let groupedMeshlets: Meshlet[][] = [];
 
         for (let i = 0; i < groups.length; i++) {
-            groupsByFaces[i] = MeshletGrouper.getFacesFromIndices(groups[i], faces).flat();
+            if (!groupedMeshlets[i]) groupedMeshlets[i] = [];
+            for (let j = 0; j < groups[i].length; j++) {
+                const meshletId = groups[i][j];
+                const meshlet = meshlets[meshletId];
+                groupedMeshlets[i].push(meshlet);
+            }
         }
-
-        let groupedMeshlets: Meshlet[] = [];
-
-        for (let i = 0; i < groupsByFaces.length; i++) {
-
-            const { cleanedVertices, cleanedFaces } = MeshletGrouper.cleanOrphanedVertices(vertices, groupsByFaces[i]);
-
-            const meshlet = new Meshlet(Float32Array.from(cleanedVertices), Uint32Array.from(cleanedFaces));
-
-            groupedMeshlets.push(meshlet);
-        }
-
         return groupedMeshlets;
     }
 
+    public static async group(meshlets: Meshlet[], nparts: number): Promise<Meshlet[][]> {
+        const adj = MeshletGrouper.adjacencyList(meshlets);
+
+        const groups = await METISWrapper.partition(adj, nparts);
+        return MeshletGrouper.rebuildMeshletsFromGroupIndices(meshlets, groups);
+    }
 
 }

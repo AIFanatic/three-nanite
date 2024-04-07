@@ -22,6 +22,10 @@ Photo description:
 <img src="./screenshots/showcase3.png">
 </p>
 
+<p align="center">
+<img src="./screenshots/showcase4.gif">
+</p>
+
 Photo description:
 Meshlets shown are the red ones, as long as the edges of the DAG don't cross there should be no cracks and a dynamic LOD is achieved (1414628 and 8154144 are simplified versions of their children).
 
@@ -50,3 +54,7 @@ of very large 3D datasets](https://vcg.isti.cnr.it/~ponchio/download/ponchio_phd
 <br />
 [CS 418 – Streaming, Level of Detail, and Occlusion
 ](https://cs418.cs.illinois.edu/website/text/nanite.html)
+<br />
+[Real-Time Ray Tracing of Micro-Poly Geometry](https://cdrdv2-public.intel.com/782066/real-time-ray-tracing-micro-poly-geometry.pdf)
+<br />
+[CARROT - JGLRXAVPOK'S BLOG](https://jglrxavpok.github.io/)
