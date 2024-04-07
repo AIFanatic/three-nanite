@@ -22,12 +22,12 @@ Photo description:
 <img src="./screenshots/showcase3.png">
 </p>
 
+Photo description:
+Meshlets shown are the red ones, as long as the edges of the DAG don't cross there should be no cracks and a dynamic LOD is achieved (1414628 and 8154144 are simplified versions of their children).
+
 <p align="center">
 <img src="./screenshots/showcase4.gif">
 </p>
-
-Photo description:
-Meshlets shown are the red ones, as long as the edges of the DAG don't cross there should be no cracks and a dynamic LOD is achieved (1414628 and 8154144 are simplified versions of their children).
 
 ## Description
 An attempt at reproducing a dynamic LOD in threejs similarly to unreal's nanite.
@@ -36,9 +36,7 @@ Very far from it but nonetheless a start.
 For now it clusters a mesh (meshlets), then groups adjacent clusters into a group, merges the mesh (shared vertices), performs mesh simplification to half the triangles in the mesh (max 128) and finally it splits it into 2 (should be N/2).
 
 ## TODO:
-- LOD errors
-- Grouping meshlet shared boundaries
-- Build DAG and perform cuts
+- More testing on LODS and DAG cut
 - Stream geometry to GPU
 
 ## References
