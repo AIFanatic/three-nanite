@@ -5,3 +5,4 @@ research
 tmp
 dist/data/
 src-bak*
+yarn-error.log

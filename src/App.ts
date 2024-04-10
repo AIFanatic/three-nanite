@@ -14,6 +14,10 @@ import { MeshletCreator } from "./utils/MeshletCreator";
 import { MeshletGrouper } from "./MeshletGrouper";
 import { MeshSimplifyScale } from "./utils/MeshSimplifyScale";
 import { DiagramVisualizer } from "./DiagramVisualizer";
+import { MeshletObject3D } from "./MeshletObject3D";
+
+
+import Stats from "three/examples/jsm/libs/stats.module.js";
 
 
 export class App {
@@ -25,6 +29,8 @@ export class App {
     private controls: OrbitControls;
 
     private stats: BetterStats;
+
+    private statsT: Stats;
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
@@ -40,6 +46,9 @@ export class App {
 
         this.stats = new BetterStats(this.renderer);
         document.body.appendChild(this.stats.domElement);
+
+        this.statsT = new Stats();
+        document.body.appendChild(this.statsT.dom);
 
         this.render();
     }
@@ -279,6 +288,27 @@ export class App {
             traverse(rootMeshlet, m => allMeshlets.push(m));
             console.log("total meshlets", allMeshlets.length);
 
+
+            console.log("objIndicesLength", objIndices.length / 3);
+            console.log("objVertices", objVertices.length / 3);
+
+            const allMeshletsIndexLength = allMeshlets.map(m => m.indices_raw.length / 3);
+            const allMeshletsIndexCount = allMeshletsIndexLength.reduce((a, b) => a + b);
+            console.log("allMeshletsIndexLength", allMeshletsIndexLength, allMeshletsIndexCount);
+
+            const allMeshletsVerticesLength = allMeshlets.map(m => m.vertices_raw.length / 3);
+            const allMeshletsVertexCount = allMeshletsVerticesLength.reduce((a, b) => a + b);
+            console.log("allMeshletsVerticesLength", allMeshletsVerticesLength, allMeshletsVertexCount);
+
+
+            console.log("HERE")
+            const meshletObject3D = new MeshletObject3D(allMeshlets.length, allMeshletsVertexCount * 3, allMeshletsIndexCount * 3);
+            this.scene.add(meshletObject3D.mesh);
+
+
+            allMeshlets.map(m => meshletObject3D.addMeshlet(m));
+            // meshletObject3D.addMeshlet(allMeshlets[0]);
+
             const d = new DiagramVisualizer(250, 250);
 
             traverse(rootMeshlet, m => {
@@ -298,6 +328,7 @@ export class App {
             addedMeshletsGroup.userData.meshletMap = {};
             addedMeshletsGroup.updateMatrix();
             addedMeshletsGroup.updateMatrixWorld();
+            addedMeshletsGroup.visible = false;
             for (let i = 0; i < allMeshlets.length; i++) {
                 const meshlet = allMeshlets[i];
                 const mesh = this.createMesh(meshlet.vertices_raw, meshlet.indices_raw, { color: App.rand(i) * 0xffffff, position: [0, 0, 0] }, true);
@@ -373,6 +404,7 @@ export class App {
 
                     for (let m of allMeshlets) toggleN(m.id, false);
                     for (let m of allMeshlets) d.setNodeStatus(m.id.toString(), false);
+                    for (let m of allMeshlets) meshletObject3D.setVisible(m.id, false);
 
                     let visibles: Meshlet[] = [];
                     const startTime = performance.now();
@@ -385,6 +417,7 @@ export class App {
                     for (let visible of visibles) {
                         toggleN(visible.id, true);
                         d.setNodeStatus(visible.id.toString(), true);
+                        meshletObject3D.setVisible(visible.id, true);
                     }
 
                     d.render();
@@ -399,6 +432,7 @@ export class App {
     private render() {
 
         this.stats.update();
+        this.statsT.update();
 
         this.renderer.render(this.scene, this.camera);
 
