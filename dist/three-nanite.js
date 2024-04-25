@@ -13136,7 +13136,7 @@ var MeshDistanceMaterial = class extends Material {
 var vertex = "void main() {\n	gl_Position = vec4( position, 1.0 );\n}";
 var fragment = "uniform sampler2D shadow_pass;\nuniform vec2 resolution;\nuniform float radius;\n#include <packing>\nvoid main() {\n	const float samples = float( VSM_SAMPLES );\n	float mean = 0.0;\n	float squared_mean = 0.0;\n	float uvStride = samples <= 1.0 ? 0.0 : 2.0 / ( samples - 1.0 );\n	float uvStart = samples <= 1.0 ? 0.0 : - 1.0;\n	for ( float i = 0.0; i < samples; i ++ ) {\n		float uvOffset = uvStart + i * uvStride;\n		#ifdef HORIZONTAL_PASS\n			vec2 distribution = unpackRGBATo2Half( texture2D( shadow_pass, ( gl_FragCoord.xy + vec2( uvOffset, 0.0 ) * radius ) / resolution ) );\n			mean += distribution.x;\n			squared_mean += distribution.y * distribution.y + distribution.x * distribution.x;\n		#else\n			float depth = unpackRGBAToDepth( texture2D( shadow_pass, ( gl_FragCoord.xy + vec2( 0.0, uvOffset ) * radius ) / resolution ) );\n			mean += depth;\n			squared_mean += depth * depth;\n		#endif\n	}\n	mean = mean / samples;\n	squared_mean = squared_mean / samples;\n	float std_dev = sqrt( squared_mean - mean * mean );\n	gl_FragColor = pack2HalfToRGBA( vec2( mean, std_dev ) );\n}";
 function WebGLShadowMap(_renderer, _objects, _capabilities) {
-  let _frustum2 = new Frustum();
+  let _frustum = new Frustum();
   const _shadowMapSize = new Vector2(), _viewportSize = new Vector2(), _viewport = new Vector4(), _depthMaterial = new MeshDepthMaterial({ depthPacking: RGBADepthPacking }), _distanceMaterial = new MeshDistanceMaterial(), _materialCache = {}, _maxTextureSize = _capabilities.maxTextureSize;
   const shadowSide = { [FrontSide]: BackSide, [BackSide]: FrontSide, [DoubleSide]: DoubleSide };
   const shadowMaterialVertical = new ShaderMaterial({
@@ -13232,7 +13232,7 @@ function WebGLShadowMap(_renderer, _objects, _capabilities) {
         );
         _state.viewport(_viewport);
         shadow.updateMatrices(light, vp);
-        _frustum2 = shadow.getFrustum();
+        _frustum = shadow.getFrustum();
         renderObject(scene, camera, shadow.camera, light, this.type);
       }
       if (shadow.isPointLightShadow !== true && this.type === VSMShadowMap) {
@@ -13320,7 +13320,7 @@ function WebGLShadowMap(_renderer, _objects, _capabilities) {
       return;
     const visible = object.layers.test(camera.layers);
     if (visible && (object.isMesh || object.isLine || object.isPoints)) {
-      if ((object.castShadow || object.receiveShadow && type === VSMShadowMap) && (!object.frustumCulled || _frustum2.intersectsObject(object))) {
+      if ((object.castShadow || object.receiveShadow && type === VSMShadowMap) && (!object.frustumCulled || _frustum.intersectsObject(object))) {
         object.modelViewMatrix.multiplyMatrices(shadowCamera.matrixWorldInverse, object.matrixWorld);
         const geometry = _objects.update(object);
         const material = object.material;
@@ -16671,7 +16671,7 @@ var WebGLRenderer = class {
     const _viewport = new Vector4(0, 0, _width, _height);
     const _scissor = new Vector4(0, 0, _width, _height);
     let _scissorTest = false;
-    const _frustum2 = new Frustum();
+    const _frustum = new Frustum();
     let _clippingEnabled = false;
     let _localClippingEnabled = false;
     const _projScreenMatrix = new Matrix4();
@@ -17178,7 +17178,7 @@ var WebGLRenderer = class {
       currentRenderState.init();
       renderStateStack.push(currentRenderState);
       _projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-      _frustum2.setFromProjectionMatrix(_projScreenMatrix);
+      _frustum.setFromProjectionMatrix(_projScreenMatrix);
       _localClippingEnabled = this.localClippingEnabled;
       _clippingEnabled = clipping.init(this.clippingPlanes, _localClippingEnabled);
       currentRenderList = renderLists.get(scene, renderListStack.length);
@@ -17249,7 +17249,7 @@ var WebGLRenderer = class {
             currentRenderState.pushShadow(object);
           }
         } else if (object.isSprite) {
-          if (!object.frustumCulled || _frustum2.intersectsSprite(object)) {
+          if (!object.frustumCulled || _frustum.intersectsSprite(object)) {
             if (sortObjects) {
               _vector3.setFromMatrixPosition(object.matrixWorld).applyMatrix4(_projScreenMatrix);
             }
@@ -17260,7 +17260,7 @@ var WebGLRenderer = class {
             }
           }
         } else if (object.isMesh || object.isLine || object.isPoints) {
-          if (!object.frustumCulled || _frustum2.intersectsObject(object)) {
+          if (!object.frustumCulled || _frustum.intersectsObject(object)) {
             const geometry = objects.update(object);
             const material = object.material;
             if (sortObjects) {
@@ -17997,572 +17997,22 @@ var DataTexture = class extends Texture {
     this.unpackAlignment = 1;
   }
 };
-function sortOpaque(a, b) {
-  return a.z - b.z;
-}
-function sortTransparent(a, b) {
-  return b.z - a.z;
-}
-var MultiDrawRenderList = class {
-  constructor() {
-    this.index = 0;
-    this.pool = [];
-    this.list = [];
-  }
-  push(drawRange, z) {
-    const pool = this.pool;
-    const list = this.list;
-    if (this.index >= pool.length) {
-      pool.push({
-        start: -1,
-        count: -1,
-        z: -1
-      });
-    }
-    const item = pool[this.index];
-    list.push(item);
-    this.index++;
-    item.start = drawRange.start;
-    item.count = drawRange.count;
-    item.z = z;
-  }
-  reset() {
-    this.list.length = 0;
-    this.index = 0;
-  }
-};
-var ID_ATTR_NAME = "batchId";
-var _matrix$1 = /* @__PURE__ */ new Matrix4();
-var _invMatrixWorld = /* @__PURE__ */ new Matrix4();
-var _identityMatrix = /* @__PURE__ */ new Matrix4();
-var _projScreenMatrix$2 = /* @__PURE__ */ new Matrix4();
-var _frustum = /* @__PURE__ */ new Frustum();
-var _box$1 = /* @__PURE__ */ new Box3();
-var _sphere$2 = /* @__PURE__ */ new Sphere();
-var _vector$5 = /* @__PURE__ */ new Vector3();
-var _renderList = /* @__PURE__ */ new MultiDrawRenderList();
-var _mesh = /* @__PURE__ */ new Mesh();
-var _batchIntersects = [];
-function copyAttributeData(src, target, targetOffset = 0) {
-  const itemSize = target.itemSize;
-  if (src.isInterleavedBufferAttribute || src.array.constructor !== target.array.constructor) {
-    const vertexCount = src.count;
-    for (let i = 0; i < vertexCount; i++) {
-      for (let c = 0; c < itemSize; c++) {
-        target.setComponent(i + targetOffset, c, src.getComponent(i, c));
-      }
-    }
-  } else {
-    target.array.set(src.array, targetOffset * itemSize);
-  }
-  target.needsUpdate = true;
-}
-var BatchedMesh = class extends Mesh {
-  get maxGeometryCount() {
-    return this._maxGeometryCount;
-  }
-  constructor(maxGeometryCount, maxVertexCount, maxIndexCount = maxVertexCount * 2, material) {
-    super(new BufferGeometry(), material);
-    this.isBatchedMesh = true;
-    this.perObjectFrustumCulled = true;
-    this.sortObjects = true;
-    this.boundingBox = null;
-    this.boundingSphere = null;
-    this.customSort = null;
-    this._drawRanges = [];
-    this._reservedRanges = [];
-    this._visibility = [];
-    this._active = [];
-    this._bounds = [];
-    this._maxGeometryCount = maxGeometryCount;
-    this._maxVertexCount = maxVertexCount;
-    this._maxIndexCount = maxIndexCount;
-    this._geometryInitialized = false;
-    this._geometryCount = 0;
-    this._multiDrawCounts = new Int32Array(maxGeometryCount);
-    this._multiDrawStarts = new Int32Array(maxGeometryCount);
-    this._multiDrawCount = 0;
-    this._visibilityChanged = true;
-    this._matricesTexture = null;
-    this._initMatricesTexture();
-  }
-  _initMatricesTexture() {
-    let size = Math.sqrt(this._maxGeometryCount * 4);
-    size = Math.ceil(size / 4) * 4;
-    size = Math.max(size, 4);
-    const matricesArray = new Float32Array(size * size * 4);
-    const matricesTexture = new DataTexture(matricesArray, size, size, RGBAFormat, FloatType);
-    this._matricesTexture = matricesTexture;
-  }
-  _initializeGeometry(reference) {
-    const geometry = this.geometry;
-    const maxVertexCount = this._maxVertexCount;
-    const maxGeometryCount = this._maxGeometryCount;
-    const maxIndexCount = this._maxIndexCount;
-    if (this._geometryInitialized === false) {
-      for (const attributeName in reference.attributes) {
-        const srcAttribute = reference.getAttribute(attributeName);
-        const { array, itemSize, normalized } = srcAttribute;
-        const dstArray = new array.constructor(maxVertexCount * itemSize);
-        const dstAttribute = new BufferAttribute(dstArray, itemSize, normalized);
-        geometry.setAttribute(attributeName, dstAttribute);
-      }
-      if (reference.getIndex() !== null) {
-        const indexArray = maxVertexCount > 65536 ? new Uint32Array(maxIndexCount) : new Uint16Array(maxIndexCount);
-        geometry.setIndex(new BufferAttribute(indexArray, 1));
-      }
-      const idArray = maxGeometryCount > 65536 ? new Uint32Array(maxVertexCount) : new Uint16Array(maxVertexCount);
-      geometry.setAttribute(ID_ATTR_NAME, new BufferAttribute(idArray, 1));
-      this._geometryInitialized = true;
-    }
-  }
-  _validateGeometry(geometry) {
-    if (geometry.getAttribute(ID_ATTR_NAME)) {
-      throw new Error(`BatchedMesh: Geometry cannot use attribute "${ID_ATTR_NAME}"`);
-    }
-    const batchGeometry = this.geometry;
-    if (Boolean(geometry.getIndex()) !== Boolean(batchGeometry.getIndex())) {
-      throw new Error('BatchedMesh: All geometries must consistently have "index".');
-    }
-    for (const attributeName in batchGeometry.attributes) {
-      if (attributeName === ID_ATTR_NAME) {
-        continue;
-      }
-      if (!geometry.hasAttribute(attributeName)) {
-        throw new Error(`BatchedMesh: Added geometry missing "${attributeName}". All geometries must have consistent attributes.`);
-      }
-      const srcAttribute = geometry.getAttribute(attributeName);
-      const dstAttribute = batchGeometry.getAttribute(attributeName);
-      if (srcAttribute.itemSize !== dstAttribute.itemSize || srcAttribute.normalized !== dstAttribute.normalized) {
-        throw new Error("BatchedMesh: All attributes must have a consistent itemSize and normalized value.");
-      }
-    }
-  }
-  setCustomSort(func) {
-    this.customSort = func;
-    return this;
-  }
-  computeBoundingBox() {
-    if (this.boundingBox === null) {
-      this.boundingBox = new Box3();
-    }
-    const geometryCount = this._geometryCount;
-    const boundingBox = this.boundingBox;
-    const active = this._active;
-    boundingBox.makeEmpty();
-    for (let i = 0; i < geometryCount; i++) {
-      if (active[i] === false)
-        continue;
-      this.getMatrixAt(i, _matrix$1);
-      this.getBoundingBoxAt(i, _box$1).applyMatrix4(_matrix$1);
-      boundingBox.union(_box$1);
-    }
-  }
-  computeBoundingSphere() {
-    if (this.boundingSphere === null) {
-      this.boundingSphere = new Sphere();
-    }
-    const geometryCount = this._geometryCount;
-    const boundingSphere = this.boundingSphere;
-    const active = this._active;
-    boundingSphere.makeEmpty();
-    for (let i = 0; i < geometryCount; i++) {
-      if (active[i] === false)
-        continue;
-      this.getMatrixAt(i, _matrix$1);
-      this.getBoundingSphereAt(i, _sphere$2).applyMatrix4(_matrix$1);
-      boundingSphere.union(_sphere$2);
-    }
-  }
-  addGeometry(geometry, vertexCount = -1, indexCount = -1) {
-    this._initializeGeometry(geometry);
-    this._validateGeometry(geometry);
-    if (this._geometryCount >= this._maxGeometryCount) {
-      throw new Error("BatchedMesh: Maximum geometry count reached.");
-    }
-    const reservedRange = {
-      vertexStart: -1,
-      vertexCount: -1,
-      indexStart: -1,
-      indexCount: -1
-    };
-    let lastRange = null;
-    const reservedRanges = this._reservedRanges;
-    const drawRanges = this._drawRanges;
-    const bounds = this._bounds;
-    if (this._geometryCount !== 0) {
-      lastRange = reservedRanges[reservedRanges.length - 1];
-    }
-    if (vertexCount === -1) {
-      reservedRange.vertexCount = geometry.getAttribute("position").count;
-    } else {
-      reservedRange.vertexCount = vertexCount;
-    }
-    if (lastRange === null) {
-      reservedRange.vertexStart = 0;
-    } else {
-      reservedRange.vertexStart = lastRange.vertexStart + lastRange.vertexCount;
-    }
-    const index = geometry.getIndex();
-    const hasIndex = index !== null;
-    if (hasIndex) {
-      if (indexCount === -1) {
-        reservedRange.indexCount = index.count;
-      } else {
-        reservedRange.indexCount = indexCount;
-      }
-      if (lastRange === null) {
-        reservedRange.indexStart = 0;
-      } else {
-        reservedRange.indexStart = lastRange.indexStart + lastRange.indexCount;
-      }
-    }
-    if (reservedRange.indexStart !== -1 && reservedRange.indexStart + reservedRange.indexCount > this._maxIndexCount || reservedRange.vertexStart + reservedRange.vertexCount > this._maxVertexCount) {
-      throw new Error("BatchedMesh: Reserved space request exceeds the maximum buffer size.");
-    }
-    const visibility = this._visibility;
-    const active = this._active;
-    const matricesTexture = this._matricesTexture;
-    const matricesArray = this._matricesTexture.image.data;
-    visibility.push(true);
-    active.push(true);
-    const geometryId = this._geometryCount;
-    this._geometryCount++;
-    _identityMatrix.toArray(matricesArray, geometryId * 16);
-    matricesTexture.needsUpdate = true;
-    reservedRanges.push(reservedRange);
-    drawRanges.push({
-      start: hasIndex ? reservedRange.indexStart : reservedRange.vertexStart,
-      count: -1
-    });
-    bounds.push({
-      boxInitialized: false,
-      box: new Box3(),
-      sphereInitialized: false,
-      sphere: new Sphere()
-    });
-    const idAttribute = this.geometry.getAttribute(ID_ATTR_NAME);
-    for (let i = 0; i < reservedRange.vertexCount; i++) {
-      idAttribute.setX(reservedRange.vertexStart + i, geometryId);
-    }
-    idAttribute.needsUpdate = true;
-    this.setGeometryAt(geometryId, geometry);
-    return geometryId;
-  }
-  setGeometryAt(id, geometry) {
-    if (id >= this._geometryCount) {
-      throw new Error("BatchedMesh: Maximum geometry count reached.");
-    }
-    this._validateGeometry(geometry);
-    const batchGeometry = this.geometry;
-    const hasIndex = batchGeometry.getIndex() !== null;
-    const dstIndex = batchGeometry.getIndex();
-    const srcIndex = geometry.getIndex();
-    const reservedRange = this._reservedRanges[id];
-    if (hasIndex && srcIndex.count > reservedRange.indexCount || geometry.attributes.position.count > reservedRange.vertexCount) {
-      throw new Error("BatchedMesh: Reserved space not large enough for provided geometry.");
-    }
-    const vertexStart = reservedRange.vertexStart;
-    const vertexCount = reservedRange.vertexCount;
-    for (const attributeName in batchGeometry.attributes) {
-      if (attributeName === ID_ATTR_NAME) {
-        continue;
-      }
-      const srcAttribute = geometry.getAttribute(attributeName);
-      const dstAttribute = batchGeometry.getAttribute(attributeName);
-      copyAttributeData(srcAttribute, dstAttribute, vertexStart);
-      const itemSize = srcAttribute.itemSize;
-      for (let i = srcAttribute.count, l = vertexCount; i < l; i++) {
-        const index = vertexStart + i;
-        for (let c = 0; c < itemSize; c++) {
-          dstAttribute.setComponent(index, c, 0);
-        }
-      }
-      dstAttribute.needsUpdate = true;
-      dstAttribute.addUpdateRange(vertexStart * itemSize, vertexCount * itemSize);
-    }
-    if (hasIndex) {
-      const indexStart = reservedRange.indexStart;
-      for (let i = 0; i < srcIndex.count; i++) {
-        dstIndex.setX(indexStart + i, vertexStart + srcIndex.getX(i));
-      }
-      for (let i = srcIndex.count, l = reservedRange.indexCount; i < l; i++) {
-        dstIndex.setX(indexStart + i, vertexStart);
-      }
-      dstIndex.needsUpdate = true;
-      dstIndex.addUpdateRange(indexStart, reservedRange.indexCount);
-    }
-    const bound = this._bounds[id];
-    if (geometry.boundingBox !== null) {
-      bound.box.copy(geometry.boundingBox);
-      bound.boxInitialized = true;
-    } else {
-      bound.boxInitialized = false;
-    }
-    if (geometry.boundingSphere !== null) {
-      bound.sphere.copy(geometry.boundingSphere);
-      bound.sphereInitialized = true;
-    } else {
-      bound.sphereInitialized = false;
-    }
-    const drawRange = this._drawRanges[id];
-    const posAttr = geometry.getAttribute("position");
-    drawRange.count = hasIndex ? srcIndex.count : posAttr.count;
-    this._visibilityChanged = true;
-    return id;
-  }
-  deleteGeometry(geometryId) {
-    const active = this._active;
-    if (geometryId >= active.length || active[geometryId] === false) {
-      return this;
-    }
-    active[geometryId] = false;
-    this._visibilityChanged = true;
-    return this;
-  }
-  getBoundingBoxAt(id, target) {
-    const active = this._active;
-    if (active[id] === false) {
-      return null;
-    }
-    const bound = this._bounds[id];
-    const box = bound.box;
-    const geometry = this.geometry;
-    if (bound.boxInitialized === false) {
-      box.makeEmpty();
-      const index = geometry.index;
-      const position = geometry.attributes.position;
-      const drawRange = this._drawRanges[id];
-      for (let i = drawRange.start, l = drawRange.start + drawRange.count; i < l; i++) {
-        let iv = i;
-        if (index) {
-          iv = index.getX(iv);
-        }
-        box.expandByPoint(_vector$5.fromBufferAttribute(position, iv));
-      }
-      bound.boxInitialized = true;
-    }
-    target.copy(box);
-    return target;
-  }
-  getBoundingSphereAt(id, target) {
-    const active = this._active;
-    if (active[id] === false) {
-      return null;
-    }
-    const bound = this._bounds[id];
-    const sphere = bound.sphere;
-    const geometry = this.geometry;
-    if (bound.sphereInitialized === false) {
-      sphere.makeEmpty();
-      this.getBoundingBoxAt(id, _box$1);
-      _box$1.getCenter(sphere.center);
-      const index = geometry.index;
-      const position = geometry.attributes.position;
-      const drawRange = this._drawRanges[id];
-      let maxRadiusSq = 0;
-      for (let i = drawRange.start, l = drawRange.start + drawRange.count; i < l; i++) {
-        let iv = i;
-        if (index) {
-          iv = index.getX(iv);
-        }
-        _vector$5.fromBufferAttribute(position, iv);
-        maxRadiusSq = Math.max(maxRadiusSq, sphere.center.distanceToSquared(_vector$5));
-      }
-      sphere.radius = Math.sqrt(maxRadiusSq);
-      bound.sphereInitialized = true;
-    }
-    target.copy(sphere);
-    return target;
-  }
-  setMatrixAt(geometryId, matrix) {
-    const active = this._active;
-    const matricesTexture = this._matricesTexture;
-    const matricesArray = this._matricesTexture.image.data;
-    const geometryCount = this._geometryCount;
-    if (geometryId >= geometryCount || active[geometryId] === false) {
-      return this;
-    }
-    matrix.toArray(matricesArray, geometryId * 16);
-    matricesTexture.needsUpdate = true;
-    return this;
-  }
-  getMatrixAt(geometryId, matrix) {
-    const active = this._active;
-    const matricesArray = this._matricesTexture.image.data;
-    const geometryCount = this._geometryCount;
-    if (geometryId >= geometryCount || active[geometryId] === false) {
-      return null;
-    }
-    return matrix.fromArray(matricesArray, geometryId * 16);
-  }
-  setVisibleAt(geometryId, value) {
-    const visibility = this._visibility;
-    const active = this._active;
-    const geometryCount = this._geometryCount;
-    if (geometryId >= geometryCount || active[geometryId] === false || visibility[geometryId] === value) {
-      return this;
-    }
-    visibility[geometryId] = value;
-    this._visibilityChanged = true;
-    return this;
-  }
-  getVisibleAt(geometryId) {
-    const visibility = this._visibility;
-    const active = this._active;
-    const geometryCount = this._geometryCount;
-    if (geometryId >= geometryCount || active[geometryId] === false) {
-      return false;
-    }
-    return visibility[geometryId];
-  }
-  raycast(raycaster, intersects) {
-    const visibility = this._visibility;
-    const active = this._active;
-    const drawRanges = this._drawRanges;
-    const geometryCount = this._geometryCount;
-    const matrixWorld = this.matrixWorld;
-    const batchGeometry = this.geometry;
-    _mesh.material = this.material;
-    _mesh.geometry.index = batchGeometry.index;
-    _mesh.geometry.attributes = batchGeometry.attributes;
-    if (_mesh.geometry.boundingBox === null) {
-      _mesh.geometry.boundingBox = new Box3();
-    }
-    if (_mesh.geometry.boundingSphere === null) {
-      _mesh.geometry.boundingSphere = new Sphere();
-    }
-    for (let i = 0; i < geometryCount; i++) {
-      if (!visibility[i] || !active[i]) {
-        continue;
-      }
-      const drawRange = drawRanges[i];
-      _mesh.geometry.setDrawRange(drawRange.start, drawRange.count);
-      this.getMatrixAt(i, _mesh.matrixWorld).premultiply(matrixWorld);
-      this.getBoundingBoxAt(i, _mesh.geometry.boundingBox);
-      this.getBoundingSphereAt(i, _mesh.geometry.boundingSphere);
-      _mesh.raycast(raycaster, _batchIntersects);
-      for (let j = 0, l = _batchIntersects.length; j < l; j++) {
-        const intersect = _batchIntersects[j];
-        intersect.object = this;
-        intersect.batchId = i;
-        intersects.push(intersect);
-      }
-      _batchIntersects.length = 0;
-    }
-    _mesh.material = null;
-    _mesh.geometry.index = null;
-    _mesh.geometry.attributes = {};
-    _mesh.geometry.setDrawRange(0, Infinity);
+var InstancedBufferAttribute = class extends BufferAttribute {
+  constructor(array, itemSize, normalized, meshPerAttribute = 1) {
+    super(array, itemSize, normalized);
+    this.isInstancedBufferAttribute = true;
+    this.meshPerAttribute = meshPerAttribute;
   }
   copy(source) {
     super.copy(source);
-    this.geometry = source.geometry.clone();
-    this.perObjectFrustumCulled = source.perObjectFrustumCulled;
-    this.sortObjects = source.sortObjects;
-    this.boundingBox = source.boundingBox !== null ? source.boundingBox.clone() : null;
-    this.boundingSphere = source.boundingSphere !== null ? source.boundingSphere.clone() : null;
-    this._drawRanges = source._drawRanges.map((range) => ({ ...range }));
-    this._reservedRanges = source._reservedRanges.map((range) => ({ ...range }));
-    this._visibility = source._visibility.slice();
-    this._active = source._active.slice();
-    this._bounds = source._bounds.map((bound) => ({
-      boxInitialized: bound.boxInitialized,
-      box: bound.box.clone(),
-      sphereInitialized: bound.sphereInitialized,
-      sphere: bound.sphere.clone()
-    }));
-    this._maxGeometryCount = source._maxGeometryCount;
-    this._maxVertexCount = source._maxVertexCount;
-    this._maxIndexCount = source._maxIndexCount;
-    this._geometryInitialized = source._geometryInitialized;
-    this._geometryCount = source._geometryCount;
-    this._multiDrawCounts = source._multiDrawCounts.slice();
-    this._multiDrawStarts = source._multiDrawStarts.slice();
-    this._matricesTexture = source._matricesTexture.clone();
-    this._matricesTexture.image.data = this._matricesTexture.image.slice();
+    this.meshPerAttribute = source.meshPerAttribute;
     return this;
   }
-  dispose() {
-    this.geometry.dispose();
-    this._matricesTexture.dispose();
-    this._matricesTexture = null;
-    return this;
-  }
-  onBeforeRender(renderer, scene, camera, geometry, material) {
-    if (!this._visibilityChanged && !this.perObjectFrustumCulled && !this.sortObjects) {
-      return;
-    }
-    const index = geometry.getIndex();
-    const bytesPerElement = index === null ? 1 : index.array.BYTES_PER_ELEMENT;
-    const active = this._active;
-    const visibility = this._visibility;
-    const multiDrawStarts = this._multiDrawStarts;
-    const multiDrawCounts = this._multiDrawCounts;
-    const drawRanges = this._drawRanges;
-    const perObjectFrustumCulled = this.perObjectFrustumCulled;
-    if (perObjectFrustumCulled) {
-      _projScreenMatrix$2.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).multiply(this.matrixWorld);
-      _frustum.setFromProjectionMatrix(
-        _projScreenMatrix$2,
-        renderer.coordinateSystem
-      );
-    }
-    let count = 0;
-    if (this.sortObjects) {
-      _invMatrixWorld.copy(this.matrixWorld).invert();
-      _vector$5.setFromMatrixPosition(camera.matrixWorld).applyMatrix4(_invMatrixWorld);
-      for (let i = 0, l = visibility.length; i < l; i++) {
-        if (visibility[i] && active[i]) {
-          this.getMatrixAt(i, _matrix$1);
-          this.getBoundingSphereAt(i, _sphere$2).applyMatrix4(_matrix$1);
-          let culled = false;
-          if (perObjectFrustumCulled) {
-            culled = !_frustum.intersectsSphere(_sphere$2);
-          }
-          if (!culled) {
-            const z = _vector$5.distanceTo(_sphere$2.center);
-            _renderList.push(drawRanges[i], z);
-          }
-        }
-      }
-      const list = _renderList.list;
-      const customSort = this.customSort;
-      if (customSort === null) {
-        list.sort(material.transparent ? sortTransparent : sortOpaque);
-      } else {
-        customSort.call(this, list, camera);
-      }
-      for (let i = 0, l = list.length; i < l; i++) {
-        const item = list[i];
-        multiDrawStarts[count] = item.start * bytesPerElement;
-        multiDrawCounts[count] = item.count;
-        count++;
-      }
-      _renderList.reset();
-    } else {
-      for (let i = 0, l = visibility.length; i < l; i++) {
-        if (visibility[i] && active[i]) {
-          let culled = false;
-          if (perObjectFrustumCulled) {
-            this.getMatrixAt(i, _matrix$1);
-            this.getBoundingSphereAt(i, _sphere$2).applyMatrix4(_matrix$1);
-            culled = !_frustum.intersectsSphere(_sphere$2);
-          }
-          if (!culled) {
-            const range = drawRanges[i];
-            multiDrawStarts[count] = range.start * bytesPerElement;
-            multiDrawCounts[count] = range.count;
-            count++;
-          }
-        }
-      }
-    }
-    this._multiDrawCount = count;
-    this._visibilityChanged = false;
-  }
-  onBeforeShadow(renderer, object, camera, shadowCamera, geometry, depthMaterial) {
-    this.onBeforeRender(renderer, null, shadowCamera, geometry, depthMaterial);
+  toJSON() {
+    const data = super.toJSON();
+    data.meshPerAttribute = this.meshPerAttribute;
+    data.isInstancedBufferAttribute = true;
+    return data;
   }
 };
 var SphereGeometry = class extends BufferGeometry {
@@ -19214,6 +18664,25 @@ var Loader = class {
   }
 };
 Loader.DEFAULT_MATERIAL_NAME = "__DEFAULT";
+var InstancedBufferGeometry = class extends BufferGeometry {
+  constructor() {
+    super();
+    this.isInstancedBufferGeometry = true;
+    this.type = "InstancedBufferGeometry";
+    this.instanceCount = Infinity;
+  }
+  copy(source) {
+    super.copy(source);
+    this.instanceCount = source.instanceCount;
+    return this;
+  }
+  toJSON() {
+    const data = super.toJSON();
+    data.instanceCount = this.instanceCount;
+    data.isInstancedBufferGeometry = true;
+    return data;
+  }
+};
 var _RESERVED_CHARS_RE = "\\[\\]\\.:\\/";
 var _reservedRe = new RegExp("[" + _RESERVED_CHARS_RE + "]", "g");
 var _wordChar = "[^" + _RESERVED_CHARS_RE + "]";
@@ -20596,6 +20065,15 @@ var Vertex = class {
   }
   static dot(a, b) {
     return a.x * b.x + a.y * b.y + a.z * b.z;
+  }
+  static applyMatrix4(a, m) {
+    const x = a.x, y = a.y, z = a.z;
+    const e = m;
+    const w = 1 / (e[3] * x + e[7] * y + e[11] * z + e[15]);
+    let x1 = (e[0] * x + e[4] * y + e[8] * z + e[12]) * w;
+    let y1 = (e[1] * x + e[5] * y + e[9] * z + e[13]) * w;
+    let z1 = (e[2] * x + e[6] * y + e[10] * z + e[14]) * w;
+    return new Vertex(x1, y1, z1);
   }
   hash() {
     return `${this.x.toFixed(5)},${this.y.toFixed(5)},${this.z.toFixed(5)}`;
@@ -24933,186 +24411,6 @@ var MeshSimplifyScale = class {
   }
 };
 
-// src/DiagramVisualizer.ts
-var DAG = class {
-  constructor() {
-    this.nodes = {};
-    this.parentToChild = {};
-    this.childToParent = {};
-    this.lodToNode = {};
-  }
-  addRelationship(map, queryKey, from, to) {
-    let mapArray = map[queryKey] ? map[queryKey] : [];
-    if (mapArray.indexOf(to) === -1)
-      mapArray.push(to);
-    map[queryKey] = mapArray;
-  }
-  addNode(node) {
-    if (!this.nodes[node.id])
-      this.nodes[node.id] = node;
-  }
-  add(parent, child) {
-    this.addNode(parent);
-    this.addNode(child);
-    this.addRelationship(this.parentToChild, parent.id, parent.id, child.id);
-    this.addRelationship(this.childToParent, child.id, child.id, parent.id);
-    this.addRelationship(this.lodToNode, parent.lod, parent.id, parent.id);
-    this.addRelationship(this.lodToNode, child.lod, child.id, child.id);
-  }
-  toDot() {
-    let dotviz = `digraph G {
-`;
-    for (let child in this.childToParent) {
-      for (let parentNode of this.childToParent[child]) {
-        dotviz += `	"${parentNode}
-${this.nodes[parentNode].lod}" -> "${child}
-${this.nodes[child].lod}"
-`;
-      }
-    }
-    dotviz += "}";
-    return dotviz;
-  }
-};
-var DiagramVisualizer = class {
-  constructor(width, height) {
-    this.canvas = document.createElement("canvas");
-    this.canvas.width = width * window.devicePixelRatio;
-    this.canvas.height = height * window.devicePixelRatio;
-    this.canvas.style.position = "absolute";
-    this.canvas.style.top = "5px";
-    this.canvas.style.left = "5px";
-    this.canvas.style.backgroundColor = "#222222";
-    this.canvas.style.border = "1px solid #ffffff";
-    this.canvas.style.borderRadius = "5px";
-    this.canvas.style.zoom = (1 / window.devicePixelRatio).toString();
-    this.context = this.canvas.getContext("2d");
-    document.body.appendChild(this.canvas);
-    this.nodeStatus = {};
-    this.dag = new DAG();
-  }
-  add(parent, child) {
-    this.dag.add(parent, child);
-    this.nodeStatus[parent.id] = false;
-    this.nodeStatus[child.id] = false;
-  }
-  setNodeStatus(nodeId, enabled) {
-    if (this.nodeStatus[nodeId] === void 0) {
-      console.warn("Could not find node, need to add it first");
-      return;
-    }
-    this.nodeStatus[nodeId] = enabled;
-  }
-  drawLine(from, to, color) {
-    this.context.strokeStyle = color;
-    this.context.beginPath();
-    this.context.moveTo(from.x, from.y);
-    this.context.lineTo(to.x, to.y);
-    this.context.closePath();
-    this.context.stroke();
-  }
-  drawCircle(position, radius, color) {
-    this.context.fillStyle = color;
-    this.context.beginPath();
-    this.context.arc(position.x, position.y, radius, 0, 180 / Math.PI);
-    this.context.closePath();
-    this.context.fill();
-  }
-  render() {
-    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    function sortByLOD(dag) {
-      let lodNodesArray = [];
-      for (let l in dag.lodToNode)
-        lodNodesArray[l] = dag.lodToNode[l];
-      return lodNodesArray.sort();
-    }
-    const sortedLods = sortByLOD(this.dag);
-    const sortedLODKeys = Object.keys(sortedLods).reverse();
-    const nodePositions = /* @__PURE__ */ new Map();
-    const yStep = this.canvas.height / sortedLODKeys.length;
-    let y = yStep * 0.5;
-    for (let l = 0; l < sortedLODKeys.length; l++) {
-      const lod = sortedLODKeys[l];
-      const nodes = this.dag.lodToNode[lod];
-      this.drawLine({ x: 0, y: y + yStep * 0.5 }, { x: this.canvas.width, y: y + yStep * 0.5 }, "#ffffff20");
-      let x = this.canvas.width * 0.5 / nodes.length;
-      for (let i = 0; i < nodes.length; i++) {
-        const pos = { x, y };
-        x += this.canvas.width / nodes.length;
-        nodePositions.set(nodes[i], pos);
-      }
-      y += yStep;
-    }
-    for (let p in this.dag.parentToChild) {
-      const ppos = nodePositions.get(p);
-      for (let c of this.dag.parentToChild[p]) {
-        const cpos = nodePositions.get(c);
-        this.drawLine(ppos, cpos, "gray");
-      }
-    }
-    for (let [id, position] of nodePositions) {
-      const color = this.nodeStatus[id] ? "green" : "white";
-      this.drawCircle(position, 3, color);
-    }
-  }
-};
-
-// src/MeshletObject3D.ts
-var MeshletObject3D = class {
-  constructor(maxGeometryCount, maxVertexCount, maxIndexCount) {
-    console.log(maxGeometryCount);
-    const material = new ShaderMaterial({
-      vertexShader: `
-            flat out int _gl_DrawID;
-            void main() {
-                gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-                // gl_Position = vec4(gl_DrawID, 0, 0, 1);
-                _gl_DrawID = gl_DrawID;
-            }`,
-      fragmentShader: `
-            flat in int _gl_DrawID;
-            
-            float rand(float co) {
-                return fract(sin((co + 1.0) * 12.9898) * 43758.5453);
-            }
-
-			void main() {
-                float id = float(_gl_DrawID);
-                float r = rand(id * 11.212);
-                float g = rand(id * 21.212);
-                float b = rand(id * 31.212);
-				gl_FragColor = vec4(r, g, b, 1.0);
-			}
-            `
-    });
-    material.extensions.multiDraw = true;
-    this.mesh = new BatchedMesh(maxGeometryCount, maxVertexCount, maxIndexCount, material);
-    this.mesh.sortObjects = false;
-    this.meshlets = {};
-    material.onBeforeCompile = (p) => {
-      console.log(p);
-    };
-  }
-  addMeshlet(meshlet) {
-    if (this.meshlets[meshlet.id]) {
-      console.warn(`Meshlet with id ${meshlet.id} already added`);
-      return;
-    }
-    const geometry = new BufferGeometry();
-    geometry.setAttribute("position", new Float32BufferAttribute(meshlet.vertices_raw, 3));
-    geometry.setIndex(new Uint16BufferAttribute(meshlet.indices_raw, 1));
-    const geometryId = this.mesh.addGeometry(geometry);
-    this.meshlets[meshlet.id] = { meshlet, geometryId };
-  }
-  setVisible(meshletId, enabled) {
-    if (!this.meshlets[meshletId]) {
-      console.warn(`Meshlet with id ${meshletId} not added.`);
-      return;
-    }
-    this.mesh.setVisibleAt(this.meshlets[meshletId].geometryId, enabled);
-  }
-};
-
 // node_modules/three/examples/jsm/libs/stats.module.js
 var Stats = function() {
   var mode = 0;
@@ -25208,11 +24506,242 @@ Stats.Panel = function(name, fg, bg) {
 };
 var stats_module_default = Stats;
 
+// src/MeshletObject3D.ts
+var _MeshletObject3D = class {
+  constructor(meshlets, stat) {
+    this.meshlets = meshlets;
+    this.meshletMatrices = [];
+    this.lodStat = stat;
+    this.tempMatrix = new Matrix4();
+    let meshletsPerLOD = [];
+    for (let meshlet of this.meshlets) {
+      if (!meshletsPerLOD[meshlet.lod])
+        meshletsPerLOD[meshlet.lod] = [];
+      meshletsPerLOD[meshlet.lod].push(meshlet);
+    }
+    for (let meshlets2 of meshletsPerLOD) {
+      if (meshlets2.length === 1) {
+        this.rootMeshlet = meshlets2[0];
+        break;
+      }
+    }
+    let nonIndexedMeshlets = [];
+    for (let meshlet of this.meshlets) {
+      nonIndexedMeshlets.push(this.meshletToNonIndexedVertices(meshlet));
+    }
+    this.meshletsProcessed = /* @__PURE__ */ new Map();
+    let currentVertexOffset = 0;
+    for (let nonIndexedMeshlet of nonIndexedMeshlets) {
+      this.meshletsProcessed.set(nonIndexedMeshlet.meshlet, {
+        meshletId: nonIndexedMeshlet.meshlet.id,
+        vertexOffset: currentVertexOffset,
+        vertexCount: nonIndexedMeshlet.vertices.length
+      });
+      currentVertexOffset += nonIndexedMeshlet.vertices.length;
+    }
+    const vertexTexture = this.createVerticesTexture(nonIndexedMeshlets);
+    this.instancedGeometry = new InstancedBufferGeometry();
+    this.instancedGeometry.instanceCount = 0;
+    const positionAttribute = new InstancedBufferAttribute(new Float32Array(1152), 3);
+    this.instancedGeometry.setAttribute("position", positionAttribute);
+    this.localPositionAttribute = new InstancedBufferAttribute(new Float32Array(meshlets.length), 3);
+    this.instancedGeometry.setAttribute("localPosition", this.localPositionAttribute);
+    this.localPositionAttribute.usage = StaticDrawUsage;
+    this.indicesAttribute = new InstancedBufferAttribute(new Float32Array(meshlets.length), 1);
+    this.instancedGeometry.setAttribute("index", this.indicesAttribute);
+    this.indicesAttribute.usage = StaticDrawUsage;
+    const material = new ShaderMaterial({
+      vertexShader: `
+                uniform sampler2D vertexTexture;
+                uniform float verticesTextureSize;
+
+                attribute vec3 localPosition;
+                attribute float index;
+
+                flat out int meshInstanceID;
+                flat out int meshletInstanceID;
+                flat out int vertexID;
+
+                void main() {
+                    float instanceID = float(gl_InstanceID);
+
+                    float vid = mod(float(gl_VertexID), 384.0);
+                    float i = float(index) + vid;
+                    float x = mod(i, verticesTextureSize);
+                    float y = floor(i / verticesTextureSize);
+                    vec3 pos = texelFetch(vertexTexture, ivec2(x, y), 0).xyz;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + localPosition, 1.0);
+
+                    meshInstanceID = gl_InstanceID;
+                    meshletInstanceID = int(index);
+                    vertexID = int(vid);
+                }
+            `,
+      fragmentShader: `
+                flat in int meshInstanceID;
+                flat in int meshletInstanceID;
+                flat in int vertexID;
+
+                float rand(float co) {
+                    return fract(sin((co + 1.0) * 12.9898) * 43758.5453);
+                }
+
+                void main() {
+                    float id = float(meshletInstanceID);
+                    float r = rand(id * 11.212);
+                    float g = rand(id * 21.212);
+                    float b = rand(id * 31.212);
+                    gl_FragColor = vec4(r, g, b, 1.0);
+                }
+            `,
+      uniforms: {
+        vertexTexture: { value: vertexTexture },
+        verticesTextureSize: { value: _MeshletObject3D.VERTICES_TEXTURE_SIZE }
+      },
+      wireframe: false
+    });
+    this.mesh = new Mesh(this.instancedGeometry, material);
+    this.mesh.frustumCulled = false;
+    let renderer = null;
+    let camera = null;
+    this.mesh.onBeforeRender = (renderer2, scene, camera2, geometry) => {
+      const startTime = performance.now();
+      this.render(renderer2, camera2);
+      const elapsed = performance.now() - startTime;
+      this.lodStat.value = `${elapsed.toFixed(3)}ms`;
+    };
+  }
+  projectErrorToScreen(center, radius, screenHeight) {
+    if (radius === Infinity)
+      return radius;
+    const testFOV = Math.PI * 0.5;
+    const cotHalfFov = 1 / Math.tan(testFOV / 2);
+    const d2 = Vertex.dot(center, center);
+    const r = radius;
+    return screenHeight / 2 * cotHalfFov * r / Math.sqrt(d2 - r * r);
+  }
+  sphereApplyMatrix4(center, radius, matrix) {
+    radius = radius * matrix.getMaxScaleOnAxis();
+    return { center: Vertex.applyMatrix4(center, matrix.elements), radius };
+  }
+  isMeshletVisible(meshlet, meshletMatrixWorld, cameraMatrixWorld, screenHeight) {
+    const completeProj = this.tempMatrix.multiplyMatrices(cameraMatrixWorld, meshletMatrixWorld);
+    const projectedBounds = this.sphereApplyMatrix4(
+      meshlet.boundingVolume.center,
+      Math.max(meshlet.clusterError, 1e-9),
+      completeProj
+    );
+    const clusterError = this.projectErrorToScreen(projectedBounds.center, projectedBounds.radius, screenHeight);
+    if (!meshlet.parentBoundingVolume)
+      console.log(meshlet);
+    const parentProjectedBounds = this.sphereApplyMatrix4(
+      meshlet.parentBoundingVolume.center,
+      Math.max(meshlet.parentError, 1e-9),
+      completeProj
+    );
+    const parentError = this.projectErrorToScreen(parentProjectedBounds.center, parentProjectedBounds.radius, screenHeight);
+    const errorThreshold = 0.1;
+    const visible = clusterError <= errorThreshold && parentError > errorThreshold;
+    return visible;
+  }
+  traverseMeshlets(meshlet, fn, visited = {}) {
+    if (visited[meshlet.id] === true)
+      return;
+    visited[meshlet.id] = true;
+    const shouldContinue = fn(meshlet);
+    if (!shouldContinue)
+      return;
+    for (let child of meshlet.parents) {
+      this.traverseMeshlets(child, fn, visited);
+    }
+  }
+  render(renderer, camera) {
+    const screenHeight = renderer.domElement.height;
+    camera.updateMatrixWorld();
+    const cameraMatrixWorld = camera.matrixWorldInverse;
+    let checks = 0;
+    let i = 0;
+    let j = 0;
+    for (let meshletMatrix of this.meshletMatrices) {
+      this.traverseMeshlets(this.rootMeshlet, (meshlet) => {
+        const isVisible = this.isMeshletVisible(meshlet, meshletMatrix, cameraMatrixWorld, screenHeight);
+        if (isVisible) {
+          const processedMeshlet = this.meshletsProcessed.get(meshlet);
+          if (!processedMeshlet)
+            throw Error("WHHATTT");
+          this.indicesAttribute.array[i] = processedMeshlet.vertexOffset / 3;
+          this.localPositionAttribute.array[j + 0] = meshletMatrix.elements[12];
+          this.localPositionAttribute.array[j + 1] = meshletMatrix.elements[13];
+          this.localPositionAttribute.array[j + 2] = meshletMatrix.elements[14];
+          i++;
+          j += 3;
+        }
+        checks++;
+        return !isVisible;
+      });
+    }
+    this.indicesAttribute.needsUpdate = true;
+    this.localPositionAttribute.needsUpdate = true;
+    this.instancedGeometry.instanceCount = i;
+  }
+  meshletToNonIndexedVertices(meshlet) {
+    const g = new BufferGeometry();
+    g.setAttribute("position", new Float32BufferAttribute(meshlet.vertices_raw, 3));
+    g.setIndex(new Uint32BufferAttribute(meshlet.indices_raw, 1));
+    const nonIndexed = g.toNonIndexed();
+    const v = new Float32Array(1152);
+    v.set(nonIndexed.getAttribute("position").array, 0);
+    return {
+      meshlet,
+      vertices: v
+    };
+  }
+  createVerticesTexture(meshlets) {
+    let vertices = [];
+    for (let meshlet of meshlets) {
+      const v = new Float32Array(1152);
+      v.set(meshlet.vertices, 0);
+      vertices.push(...v);
+    }
+    let verticesPacked = [];
+    for (let i = 0; i < vertices.length; i += 3) {
+      verticesPacked.push([vertices[i + 0], vertices[i + 1], vertices[i + 2], 0]);
+    }
+    const size = _MeshletObject3D.VERTICES_TEXTURE_SIZE;
+    const buffer = new Float32Array(size * size * 4);
+    buffer.set(verticesPacked.flat(), 0);
+    const texture = new DataTexture(
+      buffer,
+      size,
+      size,
+      RGBAFormat,
+      FloatType
+    );
+    texture.needsUpdate = true;
+    texture.generateMipmaps = false;
+    return texture;
+  }
+  addMeshletAtPosition(position) {
+    const tempMesh = new Object3D();
+    tempMesh.position.copy(position);
+    tempMesh.updateMatrixWorld();
+    this.meshletMatrices.push(tempMesh.matrixWorld.clone());
+    this.localPositionAttribute = new InstancedBufferAttribute(new Float32Array(this.meshlets.length * this.meshletMatrices.length), 3);
+    this.instancedGeometry.setAttribute("localPosition", this.localPositionAttribute);
+    this.localPositionAttribute.usage = StaticDrawUsage;
+    this.indicesAttribute = new InstancedBufferAttribute(new Float32Array(this.meshlets.length * this.meshletMatrices.length), 1);
+    this.instancedGeometry.setAttribute("index", this.indicesAttribute);
+    this.indicesAttribute.usage = StaticDrawUsage;
+  }
+};
+var MeshletObject3D = _MeshletObject3D;
+MeshletObject3D.VERTICES_TEXTURE_SIZE = 1024;
+
 // src/App.ts
 var App = class {
   constructor(canvas) {
     this.canvas = canvas;
-    this.renderer = new WebGLRenderer({ canvas: this.canvas });
+    this.renderer = new WebGLRenderer({ canvas: this.canvas, antialias: true });
     this.scene = new Scene();
     this.camera = new PerspectiveCamera(32, this.canvas.width / this.canvas.height, 0.01, 1e4);
     this.camera.position.z = 1;
@@ -25223,6 +24752,11 @@ var App = class {
     document.body.appendChild(this.stats.domElement);
     this.statsT = new stats_module_default();
     document.body.appendChild(this.statsT.dom);
+    this.lodStat = new Stat("TestLOD", `0ms`);
+    this.stats.addStat(this.lodStat);
+    window.renderer = this.renderer;
+    window.scene = this.scene;
+    window.camera = this.camera;
     this.render();
   }
   static rand(co) {
@@ -25289,8 +24823,8 @@ var App = class {
       let previousMeshlets = /* @__PURE__ */ new Map();
       const step = async (meshlets2, y2, scale = [1, 1, 1], lod) => {
         if (previousMeshlets.size === 0) {
-          for (let m of meshlets2)
-            previousMeshlets.set(m.id, m);
+          for (let m2 of meshlets2)
+            previousMeshlets.set(m2.id, m2);
         }
         let nparts = Math.ceil(meshlets2.length / 4);
         let grouped = [meshlets2];
@@ -25307,15 +24841,15 @@ var App = class {
           const localScale = await MeshSimplifyScale.scaleError(simplified.meshlet);
           let meshSpaceError = simplified.result_error * localScale;
           let childrenError = 0;
-          for (let m of group) {
-            const previousMeshlet = previousMeshlets.get(m.id);
+          for (let m2 of group) {
+            const previousMeshlet = previousMeshlets.get(m2.id);
             if (!previousMeshlet)
               throw Error("Could not find previous meshler");
             childrenError = Math.max(childrenError, previousMeshlet.clusterError);
           }
           meshSpaceError += childrenError;
-          for (let m of group) {
-            const previousMeshlet = previousMeshlets.get(m.id);
+          for (let m2 of group) {
+            const previousMeshlet = previousMeshlets.get(m2.id);
             if (!previousMeshlet)
               throw Error("Could not find previous meshler");
             previousMeshlet.parentError = meshSpaceError;
@@ -25326,9 +24860,9 @@ var App = class {
             previousMeshlets.set(o.id, o);
             splitOutputs.push(o);
           }
-          for (let m of group) {
-            m.children.push(...out);
-            m.lod = lod;
+          for (let m2 of group) {
+            m2.children.push(...out);
+            m2.lod = lod;
           }
           for (let s of out) {
             s.parents.push(...group);
@@ -25353,8 +24887,8 @@ var App = class {
       let inputs = meshlets;
       for (let lod = 0; lod < maxLOD; lod++) {
         const outputs = await step(inputs, y, [1, 1, 1], lod);
-        console.log("inputs", inputs.map((m) => m.indices_raw.length / 3));
-        console.log("outputs", outputs.map((m) => m.indices_raw.length / 3));
+        console.log("inputs", inputs.map((m2) => m2.indices_raw.length / 3));
+        console.log("outputs", outputs.map((m2) => m2.indices_raw.length / 3));
         if (outputs.length === 1) {
           console.log("WE are done at lod", lod);
           rootMeshlet = outputs[0];
@@ -25379,107 +24913,15 @@ var App = class {
         }
       }
       const allMeshlets = [];
-      traverse(rootMeshlet, (m) => allMeshlets.push(m));
+      traverse(rootMeshlet, (m2) => allMeshlets.push(m2));
       console.log("total meshlets", allMeshlets.length);
-      console.log("objIndicesLength", objIndices.length / 3);
-      console.log("objVertices", objVertices.length / 3);
-      const allMeshletsIndexLength = allMeshlets.map((m) => m.indices_raw.length / 3);
-      const allMeshletsIndexCount = allMeshletsIndexLength.reduce((a, b) => a + b);
-      console.log("allMeshletsIndexLength", allMeshletsIndexLength, allMeshletsIndexCount);
-      const allMeshletsVerticesLength = allMeshlets.map((m) => m.vertices_raw.length / 3);
-      const allMeshletsVertexCount = allMeshletsVerticesLength.reduce((a, b) => a + b);
-      console.log("allMeshletsVerticesLength", allMeshletsVerticesLength, allMeshletsVertexCount);
-      console.log("HERE");
-      const meshletObject3D = new MeshletObject3D(allMeshlets.length, allMeshletsVertexCount * 3, allMeshletsIndexCount * 3);
-      this.scene.add(meshletObject3D.mesh);
-      allMeshlets.map((m) => meshletObject3D.addMeshlet(m));
-      const d = new DiagramVisualizer(250, 250);
-      traverse(rootMeshlet, (m) => {
-        if (m.children.length > 0) {
-          for (let c of m.children) {
-            d.add({ id: m.id.toString(), lod: m.lod.toString(), data: m }, { id: c.id.toString(), lod: c.lod.toString(), data: c });
-          }
+      const m = new MeshletObject3D(allMeshlets, this.lodStat);
+      this.scene.add(m.mesh);
+      for (let x = 0; x < 20; x++) {
+        for (let y2 = 0; y2 < 20; y2++) {
+          m.addMeshletAtPosition(new Vector3(x, 0, y2));
         }
-      });
-      d.render();
-      let addedMeshletsGroup = new Group();
-      addedMeshletsGroup.position.set(0, -yO, 0);
-      addedMeshletsGroup.userData.meshletMap = {};
-      addedMeshletsGroup.updateMatrix();
-      addedMeshletsGroup.updateMatrixWorld();
-      addedMeshletsGroup.visible = false;
-      for (let i = 0; i < allMeshlets.length; i++) {
-        const meshlet = allMeshlets[i];
-        const mesh = this.createMesh(meshlet.vertices_raw, meshlet.indices_raw, { color: App.rand(i) * 16777215, position: [0, 0, 0] }, true);
-        mesh.visible = false;
-        addedMeshletsGroup.userData.meshletMap[meshlet.id] = mesh;
-        addedMeshletsGroup.add(mesh);
       }
-      this.scene.add(addedMeshletsGroup);
-      function toggleN(nodeId, enabled) {
-        const mesh = addedMeshletsGroup.userData.meshletMap[nodeId];
-        mesh.visible = enabled;
-      }
-      const mCUT = () => {
-        const testLOD = (meshlet) => {
-          const testFOV = Math.PI * 0.5;
-          const cotHalfFov = 1 / Math.tan(testFOV / 2);
-          const testScreenHeight = this.canvas.height;
-          function projectErrorToScreen(sphere) {
-            if (sphere.radius === Infinity)
-              return sphere.radius;
-            const d2 = sphere.center.dot(sphere.center);
-            const r = sphere.radius;
-            return testScreenHeight / 2 * cotHalfFov * r / Math.sqrt(d2 - r * r);
-          }
-          const c = meshlet.boundingVolume.center;
-          const projectedBounds = new Sphere(
-            new Vector3(c.x, c.y, c.z),
-            Math.max(meshlet.clusterError, 1e-9)
-          );
-          const objectMatrix = addedMeshletsGroup.matrixWorld;
-          const completeProj = new Matrix4().multiplyMatrices(this.camera.matrixWorld, objectMatrix);
-          projectedBounds.applyMatrix4(completeProj);
-          const clusterError = projectErrorToScreen(projectedBounds);
-          if (!meshlet.parentBoundingVolume)
-            console.log(meshlet);
-          const pc = meshlet.parentBoundingVolume.center;
-          const parentProjectedBounds = new Sphere(
-            new Vector3(pc.x, pc.y, pc.z),
-            Math.max(meshlet.parentError, 1e-9)
-          );
-          parentProjectedBounds.applyMatrix4(completeProj);
-          const parentError = projectErrorToScreen(parentProjectedBounds);
-          const errorThreshold = 0.1;
-          const visible = clusterError <= errorThreshold && parentError > errorThreshold;
-          return visible;
-        };
-        const lodStat = new Stat("TestLOD", `0ms`);
-        this.stats.addStat(lodStat);
-        setInterval(() => {
-          for (let m of allMeshlets)
-            toggleN(m.id, false);
-          for (let m of allMeshlets)
-            d.setNodeStatus(m.id.toString(), false);
-          for (let m of allMeshlets)
-            meshletObject3D.setVisible(m.id, false);
-          let visibles = [];
-          const startTime = performance.now();
-          for (let n of allMeshlets) {
-            if (testLOD(n))
-              visibles.push(n);
-          }
-          const elapsed = performance.now() - startTime;
-          lodStat.value = `${elapsed.toFixed(3)}ms`;
-          for (let visible of visibles) {
-            toggleN(visible.id, true);
-            d.setNodeStatus(visible.id.toString(), true);
-            meshletObject3D.setVisible(visible.id, true);
-          }
-          d.render();
-        }, 100);
-      };
-      mCUT();
     });
   }
   render() {
