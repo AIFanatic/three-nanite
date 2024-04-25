@@ -13,11 +13,11 @@ import { BoundingVolume, Meshlet } from "./Meshlet";
 import { MeshletCreator } from "./utils/MeshletCreator";
 import { MeshletGrouper } from "./MeshletGrouper";
 import { MeshSimplifyScale } from "./utils/MeshSimplifyScale";
-import { DiagramVisualizer } from "./DiagramVisualizer";
-import { MeshletObject3D } from "./MeshletObject3D";
 
 
 import Stats from "three/examples/jsm/libs/stats.module.js";
+
+import { MeshletObject3D } from "./MeshletObject3D";
 
 
 export class App {
@@ -32,10 +32,12 @@ export class App {
 
     private statsT: Stats;
 
+    private lodStat: Stat;
+
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
 
-        this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas });
+        this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(32, this.canvas.width / this.canvas.height, 0.01, 10000);
         this.camera.position.z = 1;
@@ -49,6 +51,14 @@ export class App {
 
         this.statsT = new Stats();
         document.body.appendChild(this.statsT.dom);
+
+        this.lodStat = new Stat("TestLOD", `0ms`);
+        this.stats.addStat(this.lodStat);
+
+        // DEBUG
+        window.renderer = this.renderer
+        window.scene = this.scene;
+        window.camera = this.camera;
 
         this.render();
     }
@@ -114,7 +124,6 @@ export class App {
 
     public async processObj(objURL: string) {
         OBJLoaderIndexed.load(objURL, async (objMesh) => {
-
             const objVertices = objMesh.vertices;
             const objIndices = objMesh.indices;
 
@@ -161,10 +170,10 @@ export class App {
                     // merge
                     const mergedGroup = MeshletMerger.merge(group);
                     const cleanedMergedGroup = await MeshletCleaner.clean(mergedGroup);
-                    
+
                     // simplify
                     const simplified = await MeshletSimplifier_wasm.simplify(cleanedMergedGroup, cleanedMergedGroup.indices_raw.length / 2);
-    
+
                     const localScale = await MeshSimplifyScale.scaleError(simplified.meshlet);
                     // console.log(localScale, simplified.result_error)
 
@@ -283,149 +292,19 @@ export class App {
                 }
             }
 
-
             const allMeshlets: Meshlet[] = [];
             traverse(rootMeshlet, m => allMeshlets.push(m));
             console.log("total meshlets", allMeshlets.length);
 
-
-            console.log("objIndicesLength", objIndices.length / 3);
-            console.log("objVertices", objVertices.length / 3);
-
-            const allMeshletsIndexLength = allMeshlets.map(m => m.indices_raw.length / 3);
-            const allMeshletsIndexCount = allMeshletsIndexLength.reduce((a, b) => a + b);
-            console.log("allMeshletsIndexLength", allMeshletsIndexLength, allMeshletsIndexCount);
-
-            const allMeshletsVerticesLength = allMeshlets.map(m => m.vertices_raw.length / 3);
-            const allMeshletsVertexCount = allMeshletsVerticesLength.reduce((a, b) => a + b);
-            console.log("allMeshletsVerticesLength", allMeshletsVerticesLength, allMeshletsVertexCount);
+            const m = new MeshletObject3D(allMeshlets, this.lodStat);
+            this.scene.add(m.mesh);
 
 
-            console.log("HERE")
-            const meshletObject3D = new MeshletObject3D(allMeshlets.length, allMeshletsVertexCount * 3, allMeshletsIndexCount * 3);
-            this.scene.add(meshletObject3D.mesh);
-
-
-            allMeshlets.map(m => meshletObject3D.addMeshlet(m));
-            // meshletObject3D.addMeshlet(allMeshlets[0]);
-
-            const d = new DiagramVisualizer(250, 250);
-
-            traverse(rootMeshlet, m => {
-                if (m.children.length > 0) {
-                    for (let c of m.children) {
-                        d.add({ id: m.id.toString(), lod: m.lod.toString(), data: m }, { id: c.id.toString(), lod: c.lod.toString(), data: c });
-                    }
+            for (let x = 0; x < 20; x++) {
+                for (let y = 0; y < 20; y++) {
+                    m.addMeshletAtPosition(new THREE.Vector3(x, 0, y));
                 }
-            })
-
-            d.render();
-
-
-
-            let addedMeshletsGroup: THREE.Group = new THREE.Group();
-            addedMeshletsGroup.position.set(0, -yO, 0);
-            addedMeshletsGroup.userData.meshletMap = {};
-            addedMeshletsGroup.updateMatrix();
-            addedMeshletsGroup.updateMatrixWorld();
-            addedMeshletsGroup.visible = false;
-            for (let i = 0; i < allMeshlets.length; i++) {
-                const meshlet = allMeshlets[i];
-                const mesh = this.createMesh(meshlet.vertices_raw, meshlet.indices_raw, { color: App.rand(i) * 0xffffff, position: [0, 0, 0] }, true);
-                mesh.visible = false;
-                addedMeshletsGroup.userData.meshletMap[meshlet.id] = mesh;
-                addedMeshletsGroup.add(mesh);
             }
-            this.scene.add(addedMeshletsGroup);
-
-            function toggleN(nodeId: number, enabled: boolean) {
-                const mesh = addedMeshletsGroup.userData.meshletMap[nodeId];
-                mesh.visible = enabled;
-            }
-
-            const mCUT = () => {
-                const testLOD = (meshlet: Meshlet) => {
-                    const testFOV = Math.PI * 0.5;
-                    const cotHalfFov = 1.0 / Math.tan(testFOV / 2.0);
-                    const testScreenHeight = this.canvas.height; // Renderer probably * 2?
-
-                    function projectErrorToScreen(sphere: THREE.Sphere): number {
-                        if (sphere.radius === Infinity) return sphere.radius;
-
-                        const d2 = sphere.center.dot(sphere.center);
-                        const r = sphere.radius;
-                        return testScreenHeight / 2.0 * cotHalfFov * r / Math.sqrt(d2 - r * r);
-                    }
-
-
-
-                    const c = meshlet.boundingVolume.center;
-                    const projectedBounds = new THREE.Sphere(
-                        new THREE.Vector3(c.x, c.y, c.z),
-                        Math.max(meshlet.clusterError, 10e-10)
-                    );
-
-
-                    const objectMatrix = addedMeshletsGroup.matrixWorld;
-                    const completeProj = new THREE.Matrix4().multiplyMatrices(this.camera.matrixWorld, objectMatrix);
-                    projectedBounds.applyMatrix4(completeProj);
-
-
-
-                    const clusterError = projectErrorToScreen(projectedBounds);
-
-
-                    if (!meshlet.parentBoundingVolume) console.log(meshlet)
-
-                    const pc = meshlet.parentBoundingVolume.center;
-                    const parentProjectedBounds = new THREE.Sphere(
-                        new THREE.Vector3(pc.x, pc.y, pc.z),
-                        Math.max(meshlet.parentError, 10e-10)
-                    );
-                    parentProjectedBounds.applyMatrix4(completeProj);
-                    const parentError = projectErrorToScreen(parentProjectedBounds);
-
-                    const errorThreshold = 0.1;
-                    const visible = clusterError <= errorThreshold && parentError > errorThreshold;
-                    // console.log(meshlet.id, clusterError, parentError, visible)
-
-                    return visible;
-                }
-
-
-
-
-
-                const lodStat = new Stat("TestLOD", `0ms`);
-                this.stats.addStat(lodStat);
-
-
-                setInterval(() => {
-
-                    for (let m of allMeshlets) toggleN(m.id, false);
-                    for (let m of allMeshlets) d.setNodeStatus(m.id.toString(), false);
-                    for (let m of allMeshlets) meshletObject3D.setVisible(m.id, false);
-
-                    let visibles: Meshlet[] = [];
-                    const startTime = performance.now();
-                    for (let n of allMeshlets) {
-                        if (testLOD(n)) visibles.push(n);
-                    }
-                    const elapsed = performance.now() - startTime;
-                    lodStat.value = `${elapsed.toFixed(3)}ms`;
-
-                    for (let visible of visibles) {
-                        toggleN(visible.id, true);
-                        d.setNodeStatus(visible.id.toString(), true);
-                        meshletObject3D.setVisible(visible.id, true);
-                    }
-
-                    d.render();
-
-                }, 100);
-            }
-
-            mCUT()
         })
     }
 

@@ -26,6 +26,19 @@ export class Vertex {
 		return a.x * b.x + a.y * b.y + a.z * b.z;
 	}
 
+    public static applyMatrix4(a: Vertex, m: number[]): Vertex {
+		const x = a.x, y = a.y, z = a.z;
+		const e = m;
+
+		const w = 1 / ( e[ 3 ] * x + e[ 7 ] * y + e[ 11 ] * z + e[ 15 ] );
+
+		let x1 = ( e[ 0 ] * x + e[ 4 ] * y + e[ 8 ] * z + e[ 12 ] ) * w;
+		let y1 = ( e[ 1 ] * x + e[ 5 ] * y + e[ 9 ] * z + e[ 13 ] ) * w;
+		let z1 = ( e[ 2 ] * x + e[ 6 ] * y + e[ 10 ] * z + e[ 14 ] ) * w;
+
+		return new Vertex(x1, y1, z1);
+	}
+
     public hash(): string {
         return `${this.x.toFixed(5)},${this.y.toFixed(5)},${this.z.toFixed(5)}`;
     }
@@ -91,7 +104,6 @@ export class Meshlet {
     public parentBoundingVolume: BoundingVolume;
     public parentError: number = Infinity;
     public clusterError: number = 0;
-    
 
     constructor(vertices: Float32Array, indices: Uint32Array) {
         this.vertices_raw = vertices;
