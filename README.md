@@ -29,6 +29,10 @@ Meshlets shown are the red ones, as long as the edges of the DAG don't cross the
 <img src="./screenshots/showcase4.gif">
 </p>
 
+<p align="center">
+<img src="./screenshots/showcase5.gif">
+</p>
+
 ## Description
 An attempt at reproducing a dynamic LOD in threejs similarly to unreal's nanite.
 Very far from it but nonetheless a start.
