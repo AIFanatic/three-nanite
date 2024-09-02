@@ -81,7 +81,7 @@ export class MeshletObject3D {
         const positionAttribute = new THREE.InstancedBufferAttribute(new Float32Array(1152), 3);
         this.instancedGeometry.setAttribute('position', positionAttribute);
 
-        this.localPositionAttribute = new THREE.InstancedBufferAttribute(new Float32Array(meshlets.length), 3);
+        this.localPositionAttribute = new THREE.InstancedBufferAttribute(new Float32Array(meshlets.length * 3), 3);
         this.instancedGeometry.setAttribute('localPosition', this.localPositionAttribute);
         this.localPositionAttribute.usage = THREE.StaticDrawUsage;
 
@@ -118,20 +118,23 @@ export class MeshletObject3D {
                 }
             `,
             fragmentShader: `
-                flat in int meshInstanceID;
                 flat in int meshletInstanceID;
-                flat in int vertexID;
 
-                float rand(float co) {
-                    return fract(sin((co + 1.0) * 12.9898) * 43758.5453);
+                vec3 hashColor(int seed) {
+                    uint x = uint(seed);
+                    x = ((x >> 16u) ^ x) * 0x45d9f3bu;
+                    x = ((x >> 16u) ^ x) * 0x45d9f3bu;
+                    x = (x >> 16u) ^ x;
+                    return vec3(
+                        float((x & 0xFF0000u) >> 16u) / 255.0,
+                        float((x & 0x00FF00u) >> 8u) / 255.0,
+                        float(x & 0x0000FFu) / 255.0
+                    );
                 }
 
                 void main() {
-                    float id = float(meshletInstanceID);
-                    float r = rand(id * 11.212);
-                    float g = rand(id * 21.212);
-                    float b = rand(id * 31.212);
-                    gl_FragColor = vec4(r, g, b, 1.0);
+                    vec3 color = hashColor(meshletInstanceID);
+                    gl_FragColor = vec4(color, 1.0);
                 }
             `,
             uniforms: {
@@ -306,7 +309,7 @@ export class MeshletObject3D {
 
 
 
-        this.localPositionAttribute = new THREE.InstancedBufferAttribute(new Float32Array(this.meshlets.length * this.meshletMatrices.length), 3);
+        this.localPositionAttribute = new THREE.InstancedBufferAttribute(new Float32Array(this.meshlets.length * this.meshletMatrices.length * 3), 3);
         this.instancedGeometry.setAttribute('localPosition', this.localPositionAttribute);
         this.localPositionAttribute.usage = THREE.StaticDrawUsage;
 
